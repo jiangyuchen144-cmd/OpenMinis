@@ -871,7 +871,16 @@ private fun StreamingMarkdownTextBody(
     // [T-android-md-parse-incremental] Per-composable parse state, so an
     // append-only stream re-parses only its newly-arrived tail.
     val parseState = remember { IncrementalParseState() }
-    LaunchedEffect(displayContent) {
+    // [T-android-md-parse-tailcap] `isStreaming` is a physical INPUT to the
+    // parse (it decides whether the live tail may be capped), so it has to be
+    // a restart key as well: flipping true -> false does not necessarily
+    // change `displayContent` — when the last throttled publish already equals
+    // the final content, produceState re-emits the same value and this effect
+    // would otherwise never run again, leaving the capped preformatted tail on
+    // screen for a message that has finished. Re-parsing on the flip is the
+    // point: the frozen text gets its real markdown structure back exactly
+    // once.
+    LaunchedEffect(displayContent, isStreaming) {
         val computed = withContext(Dispatchers.Default) {
             parseMarkdownIncremental(displayContent, parseState, streaming = isStreaming).also {
                 MarkdownParseCaches.prewarm(it, mdColors)
@@ -1333,13 +1342,18 @@ private fun MarkdownBlockBody(
     // A plain holder, not snapshot state: it is written from the parse
     // coroutine and must not invalidate anything.
     val liveDepositKey = remember { arrayOf<String?>(null) }
+    // Reached only after the `if (!isStreaming) { … return }` frozen branch
+    // above, so this composable is live here by construction: `streaming` is
+    // true and needs no key of its own. (The live -> frozen flip is handled by
+    // that branch taking over entirely, which is why only the shard-scoped
+    // StreamingMarkdownTextBody needs `isStreaming` in its effect key.)
     LaunchedEffect(displayContent) {
         // [T-android-stream-render-profile] Time the whole off-main tick
         // (block split + prewarm/incremental inline+math) — this is what the
         // incremental optimization shrinks.
         val parseStartNs = System.nanoTime()
         val computed = withContext(Dispatchers.Default) {
-            parseMarkdownIncremental(displayContent, parseState, streaming = isStreaming).also {
+            parseMarkdownIncremental(displayContent, parseState).also {
                 // [T-android-streaming-incremental-inline] Prewarm the frozen
                 // blocks (all but the last) normally. The last block is the
                 // growing live tail: when it's a Paragraph, warm it
@@ -2005,6 +2019,39 @@ private val markdownParseGate = Semaphore(1)
 private const val MAX_INCREMENTAL_LIVE_TAIL_CHARS = 24_000
 
 /**
+ * [T-android-md-parse-tailcap] Second budget for the same decision: how many
+ * LINES the live tail may span before it is rendered preformatted.
+ *
+ * The character cap alone does not bound the work. `parseMarkdownBlocks` splits
+ * on `content.lines()` and runs its regex battery once per line, so 24 k
+ * characters of full-width prose is a few hundred lines, while 24 k characters
+ * of short lines (a table, a log dump) is ~8 k lines and ~8 k matcher
+ * allocations *per tick* — the number the character cap was supposed to bound.
+ *
+ * 512 is a starting budget, not a measured one: it is high enough that ordinary
+ * streamed replies never reach it, and low enough that the per-tick matcher
+ * count stays in the thousands. Same caveat as the character cap — if this ever
+ * needs tuning, it needs device measurements, not a guess.
+ */
+private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
+
+/**
+ * Count newlines in `content[from until content.length]`, stopping as soon as
+ * the count exceeds [limit]. Returns a value greater than [limit] to signal
+ * "too many"; the exact number is not needed and walking a huge tail to get it
+ * would defeat the purpose. Allocation-free, no regex.
+ */
+private fun countNewlinesUpTo(content: String, from: Int, limit: Int): Int {
+    var n = 0
+    var i = from
+    while (i < content.length && n <= limit) {
+        if (content[i] == '\n') n++
+        i++
+    }
+    return n
+}
+
+/**
  * [T-android-md-parse-incremental] Longest already-parsed prefix of a growing
  * stream, so an append-only update re-parses only the tail.
  *
@@ -2223,9 +2270,18 @@ private suspend fun parseMarkdownIncremental(
     val reusable = state.prefixLength in 1..content.length &&
         prefixFingerprint(content, state.prefixLength) == state.prefixHash
     if (!reusable) {
+        // [T-android-md-parse-tailcap] A non-append edit throws the frozen
+        // prefix away, so the over-cap notice is owed again for whatever
+        // replaces it. Guarded on "there was a prefix to throw away": while a
+        // large unsplittable tail is still streaming, nothing ever seals, so
+        // prefixLength stays 0 and every tick re-enters this branch — clearing
+        // the flag unconditionally here would re-log the same degrade on every
+        // throttle interval, which is exactly the log spam the flag prevents.
+        val hadPrefix = state.prefixLength > 0 || state.prefixBlocks.isNotEmpty()
         state.prefixLength = 0
         state.prefixBlocks = emptyList()
         state.prefixHash = 0
+        if (hadPrefix) state.tailCapLogged = false
     }
 
     val head = state.prefixLength
@@ -2259,13 +2315,27 @@ private suspend fun parseMarkdownIncremental(
         // stops depending on how big the paste is. Same trade-off
         // [T-android-live-block-degrade] already makes for the fragment path.
         val liveLen = content.length - sealedEnd
-        if (streaming && liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS) {
+        // [T-android-md-parse-tailcap] Two budgets, because the cost driver is
+        // LINES, not characters: parseMarkdownBlocks splits on lines and runs
+        // its regex battery per line. A 24 k tail of full-width prose is a few
+        // hundred lines, but a 24 k tail of short lines (a table, a log) is
+        // ~8 k lines and as many matcher allocations per tick. Counting stops
+        // as soon as the limit is exceeded, so the check never walks the whole
+        // tail for a normal stream.
+        val overCap = streaming && (
+            liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS ||
+                countNewlinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
+                MAX_INCREMENTAL_LIVE_TAIL_LINES
+            )
+        if (overCap) {
             val tail = content.substring(sealedEnd)
             if (!state.tailCapLogged) {
                 state.tailCapLogged = true
                 com.openminis.app.logging.AppLogger.info(
                     "StreamDegrade",
-                    "incremental live tail $liveLen chars over $MAX_INCREMENTAL_LIVE_TAIL_CHARS rendered as one preformatted block",
+                    "incremental live tail ${liveLen}ch over the parse budget " +
+                        "(${MAX_INCREMENTAL_LIVE_TAIL_CHARS}ch/${MAX_INCREMENTAL_LIVE_TAIL_LINES}ln) " +
+                        "rendered as one preformatted block",
                 )
             }
             listOf(MdBlock.CodeBlock(tail, "text", tail))
@@ -2274,6 +2344,7 @@ private suspend fun parseMarkdownIncremental(
             parseMarkdownBlocks(content.substring(sealedEnd))
         }
     } else {
+        state.tailCapLogged = false
         emptyList()
     }
 
