@@ -1,6 +1,6 @@
 # HARK-REVIEW — Android markdown renderer, native OOM crash fix
 
-Branch `android-md-parse-tailcap`, commit `2e57041`, on a fork of `OpenMinis/OpenMinis` (GPLv3).
+Branch `android-md-parse-tailcap`, commit `3194b74`, on a fork of `OpenMinis/OpenMinis` (GPLv3).
 The functional change is `+72 / -3` in
 `src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt`.
 
@@ -10,10 +10,11 @@ file. It also records what a first review round found and what changed in
 response — see §0.
 
 ```
-HARK-REVIEW.md                                     | 727 +++++++++++++++++++++
- hark-md-parse-tailcap.patch                        | 211 ++++++
- .../openminis/app/ui/chat/StreamingMarkdownText.kt | 146 ++++-
- 3 files changed, 1081 insertions(+), 3 deletions(-)
+HARK-REVIEW.md                                     | 856 +++++++++++++++++++++
+ hark-md-parse-tailcap.patch                        | 211 +++++
+ .../openminis/app/ui/chat/StreamingMarkdownText.kt | 202 ++++-
+ .../app/ui/chat/MarkdownIncrementalParseTest.kt    | 127 +++
+ 4 files changed, 1393 insertions(+), 3 deletions(-)
 ```
 
 ---
@@ -21,7 +22,7 @@ HARK-REVIEW.md                                     | 727 +++++++++++++++++++++
 ## 0. Changes since the first review round
 
 A first read of this branch raised six points. Five were accepted, one was
-rejected as mis-scoped. All of them are reflected in `2e57041`.
+rejected as mis-scoped. All of them are reflected in `3194b74`.
 
 | # | Raised | Verdict | What changed |
 |---|---|---|---|
@@ -32,9 +33,21 @@ rejected as mis-scoped. All of them are reflected in `2e57041`.
 | 5 | Incremental-vs-full invariant is no longer tested | **Accepted** | 16 assertions now pin the invariant, the boundary behaviour, and that the synthesized block never enters the prefix cache (§6) |
 | 6 | 24 000 vs 8 000 lacks measurement | **Partially accepted** | Kept 24 000 *with* the line budget, rather than lowering to 8 000 and degrading ordinary replies. Explicitly labelled unmeasured in both constants |
 
-Still open and deliberately not fixed: a single full parse of a very large
-*finished* message is not proven safe (§7). Capping it would show a finished
-reply as preformatted text, which is worse than the risk it removes.
+### Round 2
+
+| # | Raised | Verdict | What changed |
+|---|---|---|---|
+| 7 | The line budget counts LF characters, but `lines()` also splits on CRLF and bare CR — and three lines contain two newlines | **Accepted — real bug** | `countLinesUpTo` now returns `lines().size` for the range, unconditionally: CRLF is one separator, a trailing separator opens one more line, an empty range is 1. Bare CR matters because a streamed terminal progress bar is 3 lines to `lines()` and 0 to an LF-only scan — the budget never fired for that shape (§5a) |
+| 8 | The boundary must be tested as 512 vs 513 *lines*, not newlines | **Accepted** | Boundary tests now pin against `String.lines().size`: 512 lines stay markdown, 513 degrade, 512 rows plus a trailing newline degrade (lines() sees 513), CRLF must not double-count, bare-CR content degrades. Cross-checked against 3000 random separator mixes (§6) |
+| 9 | Boundary tests belong in the project's own test tree | **Accepted** | Added to `MarkdownIncrementalParseTest` as JUnit tests; compiled and run here against the real `stableParsePrefixEnd` / `isSealedBoundary` — 21 tests, all green (§6) |
+
+Still open and deliberately not fixed:
+
+- A single full parse of a very large *finished* message is not proven safe
+  (§7). Capping it would show a finished reply as preformatted text, which is
+  worse than the risk it removes.
+- No Android build and no device measurement of either budget (§6). Those need
+  an SDK and the hardware; they cannot be closed from here.
 
 ---
 
@@ -105,7 +118,7 @@ at `LIVE_FRAGMENT_DEGRADE_CHARS = 8_000`.
 
 ````diff
 diff --git a/src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt b/src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt
-index a19010a..862696f 100644
+index a19010a..ef60b66 100644
 --- a/src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt
 +++ b/src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt
 @@ -871,9 +871,18 @@ private fun StreamingMarkdownTextBody(
@@ -141,7 +154,7 @@ index a19010a..862696f 100644
      LaunchedEffect(displayContent) {
          // [T-android-stream-render-profile] Time the whole off-main tick
          // (block split + prewarm/incremental inline+math) — this is what the
-@@ -1984,6 +1998,59 @@ private fun findDisplayMathClose(lines: List<String>, from: Int): Int? {
+@@ -1984,6 +1998,80 @@ private fun findDisplayMathClose(lines: List<String>, from: Int): Int? {
   */
  private val markdownParseGate = Semaphore(1)
  
@@ -183,25 +196,46 @@ index a19010a..862696f 100644
 +private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
 +
 +/**
-+ * Count newlines in `content[from until content.length]`, stopping as soon as
-+ * the count exceeds [limit]. Returns a value greater than [limit] to signal
-+ * "too many"; the exact number is not needed and walking a huge tail to get it
-+ * would defeat the purpose. Allocation-free, no regex.
++ * Count the LINES in `content[from until content.length]`, using the same
++ * separators as `String.lines()` (`\r\n`, `\n`, `\r`), and stop as soon as the
++ * count exceeds [limit].
++ *
++ * Why the same separators, not just '\n': the budget exists to bound the per-line
++ * regex battery `parseMarkdownBlocks` runs over `content.lines()`, so the count
++ * must mean what `lines()` means or the budget is measuring something else.
++ * Counting only '\n' both under-counts by one (three lines have two newlines) and
++ * misses carriage-return-only content entirely — a terminal progress bar
++ * (`"10%\r50%\rdone"`) is three lines to `lines()` and one to a '\n' scan.
++ *
++ * Returns exactly `lines().size` for the range, so the invariant is
++ * unconditional: an empty range is 1 (as `"".lines().size` is 1), and a
++ * trailing separator opens one more empty line (as `"a\n".lines().size` is 2).
++ * A value greater than [limit] means "over budget"; the exact figure past that
++ * point is not needed, and walking a huge tail to get it would defeat the
++ * purpose. Allocation-free, no regex, no substring.
 + */
-+private fun countNewlinesUpTo(content: String, from: Int, limit: Int): Int {
-+    var n = 0
++private fun countLinesUpTo(content: String, from: Int, limit: Int): Int {
++    var lineCount = 1
 +    var i = from
-+    while (i < content.length && n <= limit) {
-+        if (content[i] == '\n') n++
++    while (i < content.length) {
++        when (content[i]) {
++            '\r' -> {
++                lineCount++
++                // CRLF is one separator, not two.
++                if (i + 1 < content.length && content[i + 1] == '\n') i++
++            }
++            '\n' -> lineCount++
++        }
++        if (lineCount > limit) return lineCount
 +        i++
 +    }
-+    return n
++    return lineCount
 +}
 +
  /**
   * [T-android-md-parse-incremental] Longest already-parsed prefix of a growing
   * stream, so an append-only update re-parses only the tail.
-@@ -2016,6 +2083,13 @@ private class IncrementalParseState {
+@@ -2016,6 +2104,13 @@ private class IncrementalParseState {
       * O(1)-ish and false-positives only if an edit preserved both.
       */
      var prefixHash: Int = 0
@@ -215,7 +249,47 @@ index a19010a..862696f 100644
  }
  
  /** Fingerprint over the tail of [content] up to [end] (bounded work). */
-@@ -2181,15 +2255,33 @@ private fun isListContinuationLine(line: String): Boolean {
+@@ -2071,6 +2166,39 @@ internal fun debugParseIncrementalRaws(chunks: List<String>): List<String> =
+         last.map { it.raw }
+     }
+ 
++/**
++ * [T-android-md-parse-tailcap] Test hook: replay [chunks] incrementally and
++ * report each final block's simple class name, so a test can assert that an
++ * over-budget tail became a `CodeBlock` and that a finished message did not.
++ * [streaming] is forwarded verbatim, which is how the live-cap vs finished
++ * asymmetry is pinned.
++ */
++internal fun debugParseIncrementalShapes(
++    chunks: List<String>,
++    streaming: Boolean = true,
++): List<String> =
++    kotlinx.coroutines.runBlocking {
++        val state = IncrementalParseState()
++        var last: List<MdBlock> = emptyList()
++        for (c in chunks) last = parseMarkdownIncremental(c, state, streaming = streaming)
++        last.map { it::class.simpleName.orEmpty() }
++    }
++
++/**
++ * [T-android-md-parse-tailcap] Test hook: the live-tail line budget's answer for
++ * [content] starting at [from]. Exposed so the budget can be pinned against
++ * `String.lines().size` — the whole point of the counter is that it must mean
++ * what `lines()` means (CRLF, LF and bare CR alike).
++ */
++internal fun debugLiveTailLineCount(content: String, from: Int = 0, limit: Int = Int.MAX_VALUE): Int =
++    countLinesUpTo(content, from, limit)
++
++/** [T-android-md-parse-tailcap] The line budget itself, for boundary tests. */
++internal const val DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY: Int = MAX_INCREMENTAL_LIVE_TAIL_LINES
++
++/** [T-android-md-parse-tailcap] The character budget, for boundary tests. */
++internal const val DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY: Int = MAX_INCREMENTAL_LIVE_TAIL_CHARS
++
+ internal fun stableParsePrefixEnd(content: String, searchFrom: Int): Int {
+     var idx = content.lastIndexOf("\n\n")
+     while (idx >= searchFrom) {
+@@ -2181,15 +2309,33 @@ private fun isListContinuationLine(line: String): Boolean {
  private suspend fun parseMarkdownIncremental(
      content: String,
      state: IncrementalParseState,
@@ -249,7 +323,7 @@ index a19010a..862696f 100644
      }
  
      val head = state.prefixLength
-@@ -2203,8 +2295,56 @@ private suspend fun parseMarkdownIncremental(
+@@ -2203,8 +2349,58 @@ private suspend fun parseMarkdownIncremental(
          emptyList()
      }
      val liveTail = if (sealedEnd < content.length) {
@@ -278,12 +352,14 @@ index a19010a..862696f 100644
 +        // LINES, not characters: parseMarkdownBlocks splits on lines and runs
 +        // its regex battery per line. A 24 k tail of full-width prose is a few
 +        // hundred lines, but a 24 k tail of short lines (a table, a log) is
-+        // ~8 k lines and as many matcher allocations per tick. Counting stops
-+        // as soon as the limit is exceeded, so the check never walks the whole
-+        // tail for a normal stream.
++        // ~8 k lines and as many matcher allocations per tick. The line count
++        // uses the same separators as `lines()`, so "budget exceeded" means the
++        // parser will really see more than MAX_INCREMENTAL_LIVE_TAIL_LINES
++        // lines. Each count short-circuits, so a normal stream never pays for a
++        // full tail walk.
 +        val overCap = streaming && (
 +            liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS ||
-+                countNewlinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
++                countLinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
 +                MAX_INCREMENTAL_LIVE_TAIL_LINES
 +            )
 +        if (overCap) {
@@ -379,19 +455,40 @@ private const val MAX_INCREMENTAL_LIVE_TAIL_CHARS = 24_000
 private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
 
 /**
- * Count newlines in `content[from until content.length]`, stopping as soon as
- * the count exceeds [limit]. Returns a value greater than [limit] to signal
- * "too many"; the exact number is not needed and walking a huge tail to get it
- * would defeat the purpose. Allocation-free, no regex.
+ * Count the LINES in `content[from until content.length]`, using the same
+ * separators as `String.lines()` (`\r\n`, `\n`, `\r`), and stop as soon as the
+ * count exceeds [limit].
+ *
+ * Why the same separators, not just '\n': the budget exists to bound the per-line
+ * regex battery `parseMarkdownBlocks` runs over `content.lines()`, so the count
+ * must mean what `lines()` means or the budget is measuring something else.
+ * Counting only '\n' both under-counts by one (three lines have two newlines) and
+ * misses carriage-return-only content entirely — a terminal progress bar
+ * (`"10%\r50%\rdone"`) is three lines to `lines()` and one to a '\n' scan.
+ *
+ * Returns exactly `lines().size` for the range, so the invariant is
+ * unconditional: an empty range is 1 (as `"".lines().size` is 1), and a
+ * trailing separator opens one more empty line (as `"a\n".lines().size` is 2).
+ * A value greater than [limit] means "over budget"; the exact figure past that
+ * point is not needed, and walking a huge tail to get it would defeat the
+ * purpose. Allocation-free, no regex, no substring.
  */
-private fun countNewlinesUpTo(content: String, from: Int, limit: Int): Int {
-    var n = 0
+private fun countLinesUpTo(content: String, from: Int, limit: Int): Int {
+    var lineCount = 1
     var i = from
-    while (i < content.length && n <= limit) {
-        if (content[i] == '\n') n++
+    while (i < content.length) {
+        when (content[i]) {
+            '\r' -> {
+                lineCount++
+                // CRLF is one separator, not two.
+                if (i + 1 < content.length && content[i + 1] == '\n') i++
+            }
+            '\n' -> lineCount++
+        }
+        if (lineCount > limit) return lineCount
         i++
     }
-    return n
+    return lineCount
 }
 ````
 
@@ -438,19 +535,40 @@ private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
 
 ````kotlin
 /**
- * Count newlines in `content[from until content.length]`, stopping as soon as
- * the count exceeds [limit]. Returns a value greater than [limit] to signal
- * "too many"; the exact number is not needed and walking a huge tail to get it
- * would defeat the purpose. Allocation-free, no regex.
+ * Count the LINES in `content[from until content.length]`, using the same
+ * separators as `String.lines()` (`\r\n`, `\n`, `\r`), and stop as soon as the
+ * count exceeds [limit].
+ *
+ * Why the same separators, not just '\n': the budget exists to bound the per-line
+ * regex battery `parseMarkdownBlocks` runs over `content.lines()`, so the count
+ * must mean what `lines()` means or the budget is measuring something else.
+ * Counting only '\n' both under-counts by one (three lines have two newlines) and
+ * misses carriage-return-only content entirely — a terminal progress bar
+ * (`"10%\r50%\rdone"`) is three lines to `lines()` and one to a '\n' scan.
+ *
+ * Returns exactly `lines().size` for the range, so the invariant is
+ * unconditional: an empty range is 1 (as `"".lines().size` is 1), and a
+ * trailing separator opens one more empty line (as `"a\n".lines().size` is 2).
+ * A value greater than [limit] means "over budget"; the exact figure past that
+ * point is not needed, and walking a huge tail to get it would defeat the
+ * purpose. Allocation-free, no regex, no substring.
  */
-private fun countNewlinesUpTo(content: String, from: Int, limit: Int): Int {
-    var n = 0
+private fun countLinesUpTo(content: String, from: Int, limit: Int): Int {
+    var lineCount = 1
     var i = from
-    while (i < content.length && n <= limit) {
-        if (content[i] == '\n') n++
+    while (i < content.length) {
+        when (content[i]) {
+            '\r' -> {
+                lineCount++
+                // CRLF is one separator, not two.
+                if (i + 1 < content.length && content[i + 1] == '\n') i++
+            }
+            '\n' -> lineCount++
+        }
+        if (lineCount > limit) return lineCount
         i++
     }
-    return n
+    return lineCount
 }
 ````
 
@@ -596,12 +714,14 @@ private suspend fun parseMarkdownIncremental(
         // LINES, not characters: parseMarkdownBlocks splits on lines and runs
         // its regex battery per line. A 24 k tail of full-width prose is a few
         // hundred lines, but a 24 k tail of short lines (a table, a log) is
-        // ~8 k lines and as many matcher allocations per tick. Counting stops
-        // as soon as the limit is exceeded, so the check never walks the whole
-        // tail for a normal stream.
+        // ~8 k lines and as many matcher allocations per tick. The line count
+        // uses the same separators as `lines()`, so "budget exceeded" means the
+        // parser will really see more than MAX_INCREMENTAL_LIVE_TAIL_LINES
+        // lines. Each count short-circuits, so a normal stream never pays for a
+        // full tail walk.
         val overCap = streaming && (
             liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS ||
-                countNewlinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
+                countLinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
                 MAX_INCREMENTAL_LIVE_TAIL_LINES
             )
         if (overCap) {
@@ -663,37 +783,44 @@ private suspend fun parseMarkdownIncremental(
 
 ## 6. What the test suite pins
 
-Compiled with Kotlin 2.1.0 / OpenJDK 17, the function under test extracted
-verbatim from the file and compiled against stub signatures. `parseMarkdownBlocks`
-is a real miniature parser in the harness (blank-line separated paragraphs), so
-the incremental-vs-full comparison is meaningful. 16/16 checks pass:
+Two layers, both run here.
 
-- 30 k char live tail collapses to one `CodeBlock`; exactly at the char cap is
-  untouched; one char over collapses;
-- 600 short lines (1 199 chars, well under the char cap) collapse — this is the
-  case the character budget alone cannot catch; exactly at the line cap untouched;
-- finished 30 k text parses as markdown;
-- **the reviewer's scenario**: live-capped, then finished with the *same* text,
-  restores real blocks;
-- the synthesized `CodeBlock` never enters `state.prefixBlocks`;
-- incremental block split == full parse split for content under budget;
-- a capped segment does not poison a later freeze: after appending more text and
-  finishing, the result equals a full parse of the whole document;
-- three capped ticks log once; the notice re-arms when the tail stops being
-  capped; it also re-arms after a non-append edit that discarded a real prefix;
-- content with no unsealed remainder still yields blocks; empty input yields none.
+**A. The project's own JUnit tests** —
+`src/android/app/src/test/java/com/openminis/app/ui/chat/MarkdownIncrementalParseTest.kt`,
+compiled with JUnit 4.13.2 against the *real* `stableParsePrefixEnd`,
+`isSealedBoundary` and `countLinesUpTo`, and executed: **21 tests, all green.**
+The ten new ones pin:
+
+- `countLinesUpTo == String.lines().size` for every shape where they differ:
+  trailing newline, CRLF, bare CR, terminal progress bar, empty string;
+- exactly 512 lines stays markdown; 513 degrades;
+- 512 rows plus a trailing newline degrades (because `lines()` sees 513);
+- CRLF rows count once each and must not trip the budget early;
+- bare-CR content degrades on the line budget (zero `
+` in it);
+- the character budget on its own: exactly at it is untouched, one over degrades;
+- a message capped while live gets its markdown back when finished;
+- the synthesized `CodeBlock` stays out of the cached prefix, and finishing
+  equals a full parse.
+
+**B. A standalone harness** with the function extracted verbatim and
+`parseMarkdownBlocks` replaced by a real miniature parser (blank-line separated
+paragraphs) — **22 checks, all green** — which additionally cross-checks
+`countLinesUpTo` against `String.lines().size` over 3000 random mixes of
+`a b 
+  space` with zero mismatches, and checks that the counter
+short-circuits (513 returned from a 200 KB tail in under 20 ms).
 
 **Not verified:**
 
 - **No full Android build.** No Android SDK / Compose dependencies were
   available where this was produced, so `assembleDebug` was never run and the
   Compose call sites were never type-checked against the real project. The
-  `LaunchedEffect` key fix in particular is only reasoned about, not observed on
-  a device.
-- **No on-device confirmation** that the crash stops, and no measurement of the
-  two budget constants.
-- **No instrumented test** in the project's own test tree; the assertions above
-  live in a standalone harness.
+  `LaunchedEffect` key fix is reasoned about and its parse semantics are tested,
+  but the effect itself is not exercised.
+- **No on-device run** and no measurement of either budget against native heap
+  or parse time.
+- **No confirmation** that the original `Scudo` crash is gone.
 
 ## 7. Deliberately not fixed
 
@@ -723,5 +850,5 @@ their initial HTML. These return raw text:
 
 - This file: `https://raw.githubusercontent.com/jiangyuchen144-cmd/OpenMinis/android-md-parse-tailcap/HARK-REVIEW.md`
 - Patch:     `https://raw.githubusercontent.com/jiangyuchen144-cmd/OpenMinis/android-md-parse-tailcap/hark-md-parse-tailcap.patch`
-- Commit patch: `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/2e57041.patch`
-- Commit diff:  `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/2e57041.diff`
+- Commit patch: `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/3194b74.patch`
+- Commit diff:  `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/3194b74.diff`
