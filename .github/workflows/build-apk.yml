@@ -1,0 +1,130 @@
+name: Build APK
+
+# Produces an installable APK for this branch on an x86_64 runner.
+#
+# Why GitHub Actions and not the device: the Android toolchain has no
+# linux-aarch64 host binaries for either aapt2 (resource compilation) or the
+# NDK (native cross-compilation), so the build cannot run on the phone.
+#
+# Release signing uses the project's own `signingConfigs.getByName("debug")`
+# (see app/build.gradle.kts) — the same config upstream uses for its published
+# builds — so no keystore secrets are needed here.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - android-md-parse-tailcap
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout with submodules (proot, ish)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 1
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
+                      /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          df -h /
+
+      - name: JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Android SDK packages
+        run: |
+          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+          "$SDKMANAGER" --install \
+            "platforms;android-36" \
+            "build-tools;35.0.0" \
+            "ndk;28.0.13004108" \
+            "cmake;3.22.1"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
+          ls "$ANDROID_HOME/ndk"
+
+      - name: Go toolchain
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24'
+          cache: false
+
+      - name: Native deps — proot + loaders
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          bash deps/build_proot.sh
+          ls -l src/android/app/src/main/assets/proot-aarch64 || true
+          ls -l src/android/app/src/main/jniLibs/arm64-v8a/ || true
+
+      - name: Native deps — Alpine rootfs asset
+        run: |
+          bash scripts/prepare_android_sandbox.sh
+          ls -l src/android/app/src/main/assets/ | grep -iE 'alpine|rootfs' || true
+
+      - name: Native deps — rclone via gomobile
+        run: |
+          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
+          export PATH="$PATH:$(go env GOPATH)/bin"
+          go install golang.org/x/mobile/cmd/gomobile@latest
+          gomobile init
+          bash deps/build_rclone_android.sh
+          mkdir -p src/android/app/libs
+          cp deps/build/rclone/rclone.aar src/android/app/libs/
+          ls -l src/android/app/libs/
+
+      - name: Gradle assembleRelease
+        working-directory: src/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
+            -Dorg.gradle.jvmargs=-Xmx4g
+
+      - name: Locate APK
+        id: apk
+        run: |
+          APK=$(find src/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          test -n "$APK" || { echo "no APK produced"; find src/android/app/build/outputs -maxdepth 3; exit 1; }
+          echo "path=$APK" >> $GITHUB_OUTPUT
+          cp "$APK" "Minis-1.15-hark-md-parse-tailcap.apk"
+          ls -lh "Minis-1.15-hark-md-parse-tailcap.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "Minis-1.15-hark-md-parse-tailcap.apk" \
+            | grep -E "^package:|sdkVersion|targetSdkVersion|application-label" || true
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: minis-apk
+          path: Minis-1.15-hark-md-parse-tailcap.apk
+          retention-days: 14
+
+      - name: Attach to a Release (anonymous download)
+        if: success()
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: hark-md-parse-tailcap-build${{ github.run_number }}
+          name: Minis 1.15 + md-parse-tailcap (build ${{ github.run_number }})
+          draft: false
+          prerelease: true
+          body: |
+            Built from branch `android-md-parse-tailcap` at ${{ github.sha }}.
+
+            Single change vs upstream main: the streaming markdown live tail is
+            capped (24 000 chars / 512 lines) and rendered preformatted while
+            live, instead of being re-parsed in full on every throttle tick.
+            See HARK-REVIEW.md in this branch.
+
+            `applicationId com.openminis.app`, signed with the project's own
+            debug signing config — installs as a separate app from a repackaged
+            distribution, and keeps its own data directory.
+          files: Minis-1.15-hark-md-parse-tailcap.apk
