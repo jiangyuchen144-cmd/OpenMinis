@@ -873,7 +873,7 @@ private fun StreamingMarkdownTextBody(
     val parseState = remember { IncrementalParseState() }
     LaunchedEffect(displayContent) {
         val computed = withContext(Dispatchers.Default) {
-            parseMarkdownIncremental(displayContent, parseState).also {
+            parseMarkdownIncremental(displayContent, parseState, streaming = isStreaming).also {
                 MarkdownParseCaches.prewarm(it, mdColors)
             }
         }
@@ -1339,7 +1339,7 @@ private fun MarkdownBlockBody(
         // incremental optimization shrinks.
         val parseStartNs = System.nanoTime()
         val computed = withContext(Dispatchers.Default) {
-            parseMarkdownIncremental(displayContent, parseState).also {
+            parseMarkdownIncremental(displayContent, parseState, streaming = isStreaming).also {
                 // [T-android-streaming-incremental-inline] Prewarm the frozen
                 // blocks (all but the last) normally. The last block is the
                 // growing live tail: when it's a Paragraph, warm it
@@ -1985,6 +1985,26 @@ private fun findDisplayMathClose(lines: List<String>, from: Int): Int? {
 private val markdownParseGate = Semaphore(1)
 
 /**
+ * [T-android-md-parse-tailcap] Ceiling on the unsealed ("live") text one
+ * incremental parse pass may hand to the block parser, applied only while the
+ * content is still streaming.
+ *
+ * Streaming content is re-parsed on every throttle tick, so a live tail with
+ * no ceiling makes the cost of a tick grow with the size of the block being
+ * streamed. The final text is parsed once, so it is deliberately NOT capped
+ * here: rendering a finished reply as one preformatted block would be a
+ * visible regression, and a single unbounded parse is the cost the cold-parse
+ * path already pays everywhere. Same asymmetry as
+ * [T-android-live-block-degrade], which degrades a live fragment at 8 k and
+ * parses it in full once it freezes.
+ *
+ * 24 k is well above the 8 k point at which the fragment path already stops
+ * rendering markdown, so this only changes what a tick does to a genuinely
+ * large unsplittable block (a pasted log, a shell dump, a giant table).
+ */
+private const val MAX_INCREMENTAL_LIVE_TAIL_CHARS = 24_000
+
+/**
  * [T-android-md-parse-incremental] Longest already-parsed prefix of a growing
  * stream, so an append-only update re-parses only the tail.
  *
@@ -2016,6 +2036,13 @@ private class IncrementalParseState {
      * O(1)-ish and false-positives only if an edit preserved both.
      */
     var prefixHash: Int = 0
+    /**
+     * [T-android-md-parse-tailcap] Whether the over-cap notice was already
+     * logged for the current tail. A capped stream is parsed every throttle
+     * interval, so logging unconditionally would turn one degrade into
+     * dozens of identical lines in a log users are asked to attach.
+     */
+    var tailCapLogged: Boolean = false
 }
 
 /** Fingerprint over the tail of [content] up to [end] (bounded work). */
@@ -2181,6 +2208,15 @@ private fun isListContinuationLine(line: String): Boolean {
 private suspend fun parseMarkdownIncremental(
     content: String,
     state: IncrementalParseState,
+    /**
+     * Whether [content] is still growing. Only a growing tail is worth
+     * capping, because only a growing tail is re-parsed on every throttle
+     * tick; the final text is parsed once, and rendering a finished reply as
+     * one giant preformatted block would be a regression the user would see.
+     * Same asymmetry the fragment path already has: degrade while live, full
+     * parse once when frozen.
+     */
+    streaming: Boolean = true,
 ): List<MdBlock> = markdownParseGate.withPermit {
     // Growth must be append-only for the cached prefix to remain valid. Any
     // other edit (retry, edit-message, a shorter re-render) resets the state.
@@ -2203,7 +2239,40 @@ private suspend fun parseMarkdownIncremental(
         emptyList()
     }
     val liveTail = if (sealedEnd < content.length) {
-        parseMarkdownBlocks(content.substring(sealedEnd))
+        // [T-android-md-parse-tailcap] Bound the per-tick block-parse work.
+        //
+        // stableParsePrefixEnd() refuses to freeze anything inside a fence or a
+        // table, so a single unsplittable block that is still streaming keeps
+        // the WHOLE of it live: every throttle tick re-parsed it from its own
+        // start. parseMarkdownBlocks runs ~8 `Regex.matches` per line, and each
+        // of those allocates a fresh native ICU MatcherState (libicu_jni
+        // MatcherState::updateInput). A 100 KB paste -- a shell dump, a
+        // logcat tail, a giant table -- is ~1.7 k lines, so one tick is
+        // ~13 k native matcher allocations; at one tick per throttle interval
+        // over a 60 s stream that is hundreds of MB of churn, and with N
+        // concurrent streams it lands in the same place the parse gate was
+        // added to defuse: native heap into the GBs and, in the field,
+        // `Scudo ERROR: internal map failure` -> SIGABRT.
+        //
+        // Above the cap we still render every byte, but as one preformatted
+        // block: no inline parse, no per-line matcher, so the cost of a tick
+        // stops depending on how big the paste is. Same trade-off
+        // [T-android-live-block-degrade] already makes for the fragment path.
+        val liveLen = content.length - sealedEnd
+        if (streaming && liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS) {
+            val tail = content.substring(sealedEnd)
+            if (!state.tailCapLogged) {
+                state.tailCapLogged = true
+                com.openminis.app.logging.AppLogger.info(
+                    "StreamDegrade",
+                    "incremental live tail $liveLen chars over $MAX_INCREMENTAL_LIVE_TAIL_CHARS rendered as one preformatted block",
+                )
+            }
+            listOf(MdBlock.CodeBlock(tail, "text", tail))
+        } else {
+            state.tailCapLogged = false
+            parseMarkdownBlocks(content.substring(sealedEnd))
+        }
     } else {
         emptyList()
     }
