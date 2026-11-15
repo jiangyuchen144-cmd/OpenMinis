@@ -2036,19 +2036,40 @@ private const val MAX_INCREMENTAL_LIVE_TAIL_CHARS = 24_000
 private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
 
 /**
- * Count newlines in `content[from until content.length]`, stopping as soon as
- * the count exceeds [limit]. Returns a value greater than [limit] to signal
- * "too many"; the exact number is not needed and walking a huge tail to get it
- * would defeat the purpose. Allocation-free, no regex.
+ * Count the LINES in `content[from until content.length]`, using the same
+ * separators as `String.lines()` (`\r\n`, `\n`, `\r`), and stop as soon as the
+ * count exceeds [limit].
+ *
+ * Why the same separators, not just '\n': the budget exists to bound the per-line
+ * regex battery `parseMarkdownBlocks` runs over `content.lines()`, so the count
+ * must mean what `lines()` means or the budget is measuring something else.
+ * Counting only '\n' both under-counts by one (three lines have two newlines) and
+ * misses carriage-return-only content entirely — a terminal progress bar
+ * (`"10%\r50%\rdone"`) is three lines to `lines()` and one to a '\n' scan.
+ *
+ * Returns exactly `lines().size` for the range, so the invariant is
+ * unconditional: an empty range is 1 (as `"".lines().size` is 1), and a
+ * trailing separator opens one more empty line (as `"a\n".lines().size` is 2).
+ * A value greater than [limit] means "over budget"; the exact figure past that
+ * point is not needed, and walking a huge tail to get it would defeat the
+ * purpose. Allocation-free, no regex, no substring.
  */
-private fun countNewlinesUpTo(content: String, from: Int, limit: Int): Int {
-    var n = 0
+private fun countLinesUpTo(content: String, from: Int, limit: Int): Int {
+    var lineCount = 1
     var i = from
-    while (i < content.length && n <= limit) {
-        if (content[i] == '\n') n++
+    while (i < content.length) {
+        when (content[i]) {
+            '\r' -> {
+                lineCount++
+                // CRLF is one separator, not two.
+                if (i + 1 < content.length && content[i + 1] == '\n') i++
+            }
+            '\n' -> lineCount++
+        }
+        if (lineCount > limit) return lineCount
         i++
     }
-    return n
+    return lineCount
 }
 
 /**
@@ -2144,6 +2165,39 @@ internal fun debugParseIncrementalRaws(chunks: List<String>): List<String> =
         for (c in chunks) last = parseMarkdownIncremental(c, state)
         last.map { it.raw }
     }
+
+/**
+ * [T-android-md-parse-tailcap] Test hook: replay [chunks] incrementally and
+ * report each final block's simple class name, so a test can assert that an
+ * over-budget tail became a `CodeBlock` and that a finished message did not.
+ * [streaming] is forwarded verbatim, which is how the live-cap vs finished
+ * asymmetry is pinned.
+ */
+internal fun debugParseIncrementalShapes(
+    chunks: List<String>,
+    streaming: Boolean = true,
+): List<String> =
+    kotlinx.coroutines.runBlocking {
+        val state = IncrementalParseState()
+        var last: List<MdBlock> = emptyList()
+        for (c in chunks) last = parseMarkdownIncremental(c, state, streaming = streaming)
+        last.map { it::class.simpleName.orEmpty() }
+    }
+
+/**
+ * [T-android-md-parse-tailcap] Test hook: the live-tail line budget's answer for
+ * [content] starting at [from]. Exposed so the budget can be pinned against
+ * `String.lines().size` — the whole point of the counter is that it must mean
+ * what `lines()` means (CRLF, LF and bare CR alike).
+ */
+internal fun debugLiveTailLineCount(content: String, from: Int = 0, limit: Int = Int.MAX_VALUE): Int =
+    countLinesUpTo(content, from, limit)
+
+/** [T-android-md-parse-tailcap] The line budget itself, for boundary tests. */
+internal const val DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY: Int = MAX_INCREMENTAL_LIVE_TAIL_LINES
+
+/** [T-android-md-parse-tailcap] The character budget, for boundary tests. */
+internal const val DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY: Int = MAX_INCREMENTAL_LIVE_TAIL_CHARS
 
 internal fun stableParsePrefixEnd(content: String, searchFrom: Int): Int {
     var idx = content.lastIndexOf("\n\n")
@@ -2319,12 +2373,14 @@ private suspend fun parseMarkdownIncremental(
         // LINES, not characters: parseMarkdownBlocks splits on lines and runs
         // its regex battery per line. A 24 k tail of full-width prose is a few
         // hundred lines, but a 24 k tail of short lines (a table, a log) is
-        // ~8 k lines and as many matcher allocations per tick. Counting stops
-        // as soon as the limit is exceeded, so the check never walks the whole
-        // tail for a normal stream.
+        // ~8 k lines and as many matcher allocations per tick. The line count
+        // uses the same separators as `lines()`, so "budget exceeded" means the
+        // parser will really see more than MAX_INCREMENTAL_LIVE_TAIL_LINES
+        // lines. Each count short-circuits, so a normal stream never pays for a
+        // full tail walk.
         val overCap = streaming && (
             liveLen > MAX_INCREMENTAL_LIVE_TAIL_CHARS ||
-                countNewlinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
+                countLinesUpTo(content, sealedEnd, MAX_INCREMENTAL_LIVE_TAIL_LINES) >
                 MAX_INCREMENTAL_LIVE_TAIL_LINES
             )
         if (overCap) {

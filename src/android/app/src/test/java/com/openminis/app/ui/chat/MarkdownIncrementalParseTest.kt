@@ -125,4 +125,131 @@ class MarkdownIncrementalParseTest {
         val b = "totally different\n\ncontent here"
         assertEquals(debugParseBlockRaws(b), debugParseIncrementalRaws(listOf(a, b)))
     }
+
+    // ─── [T-android-md-parse-tailcap] live-tail budgets ────────────────────
+
+    /** `n` lines of one character, optionally terminated by a newline. */
+    private fun shortLines(n: Int, trailing: Boolean): String =
+        (1..n).joinToString("\n") { "x" } + if (trailing) "\n" else ""
+
+    private fun shards(text: String): List<String> =
+        debugParseIncrementalShapes(listOf(text))
+
+    /** Make \r and \n visible in an assertion message. */
+    private fun String.escape(): String =
+        replace("\r", "\\r").replace("\n", "\\n")
+
+    @Test
+    fun `the line counter means what String lines means`() {
+        // The budget exists to bound the per-line regex battery over
+        // content.lines(), so its count must be lines(), not newlines. These
+        // are the shapes where the two differ.
+        val cases = listOf(
+            "a\nb\nc",                    // 3 lines, 2 LF
+            "a\nb\nc\n",                  // trailing LF opens one more empty line
+            "a\r\nb\r\nc",                // CRLF is ONE separator
+            "a\rb\rc",                    // bare CR
+            "progress\rprogress\rdone",   // terminal progress: 3 lines, ZERO LF
+            "\r\r\r",
+            "\n\r\n\r",
+            "a",
+            "",
+        )
+        for (text in cases) {
+            assertEquals(
+                "countLinesUpTo must equal lines().size for ${text.escape()}",
+                text.lines().size,
+                debugLiveTailLineCount(text),
+            )
+        }
+    }
+
+    @Test
+    fun `a live tail at the line budget is still parsed as markdown`() {
+        val atCap = shortLines(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY, trailing = false)
+        assertEquals(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY, atCap.lines().size)
+        assertEquals(
+            "exactly at the budget must not degrade",
+            listOf("Paragraph"),
+            shards(atCap),
+        )
+    }
+
+    @Test
+    fun `one line over the line budget degrades to a preformatted block`() {
+        val over = shortLines(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY + 1, trailing = false)
+        assertEquals(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY + 1, over.lines().size)
+        assertEquals(listOf("CodeBlock"), shards(over))
+    }
+
+    @Test
+    fun `a trailing newline pushes the count one line over the budget`() {
+        // Same 512 visible rows, but lines() sees 513 — and the budget follows
+        // lines(), so this degrades. Pinned so the boundary cannot drift.
+        val withTrailing = shortLines(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY, trailing = true)
+        assertEquals(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY + 1, withTrailing.lines().size)
+        assertEquals(listOf("CodeBlock"), shards(withTrailing))
+    }
+
+    @Test
+    fun `CRLF rows are one line each, not two`() {
+        val crlf = (1..DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY).joinToString("\r\n") { "x" }
+        assertEquals(DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY, crlf.lines().size)
+        assertEquals(
+            "CRLF must not double-count and trip the budget early",
+            listOf("Paragraph"),
+            shards(crlf),
+        )
+    }
+
+    @Test
+    fun `bare-CR content degrades on the line budget`() {
+        // A terminal progress bar: many lines, no LF at all. A '\n'-only
+        // counter would score this as one line and never cap it.
+        val progress = (1..DEBUG_MAX_LIVE_TAIL_LINES_TEST_ONLY + 1).joinToString("\r") { "x" }
+        assertEquals(0, progress.count { it == '\n' })
+        assertEquals(listOf("CodeBlock"), shards(progress))
+    }
+
+    @Test
+    fun `the character budget still applies on its own`() {
+        val big = "x".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY + 1)
+        assertEquals(listOf("CodeBlock"), shards(big))
+        assertEquals(
+            "exactly at the character budget must not degrade",
+            listOf("Paragraph"),
+            shards("y".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY)),
+        )
+    }
+
+    @Test
+    fun `a finished message gets its markdown back after being capped live`() {
+        // The regression this cap could introduce: capped while streaming, then
+        // the stream ends with the SAME text, so the effect key is the only
+        // thing that can re-trigger the parse. The parse itself must return
+        // real blocks for streaming = false.
+        val big = "x".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY + 1)
+        assertEquals(listOf("CodeBlock"), debugParseIncrementalShapes(listOf(big), streaming = true))
+        assertEquals(listOf("Paragraph"), debugParseIncrementalShapes(listOf(big), streaming = false))
+    }
+
+    @Test
+    fun `the synthesized block never enters the cached prefix`() {
+        // If it did, a later freeze would append real blocks beside a fake one.
+        // Layout: a frozen prefix of paragraphs, then an over-budget tail — so
+        // the result is Paragraph*N + CodeBlock, and the CodeBlock must stay out
+        // of the cache.
+        val head = (1..10).joinToString("\n\n") { "h$it" }
+        val tail = "x".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY + 1)
+        val whole = head + "\n\n" + tail
+        val shapes = debugParseIncrementalShapes(listOf(whole, whole), streaming = true)
+        assertEquals("the frozen prefix keeps its real blocks", 10, shapes.count { it == "Paragraph" })
+        assertEquals("only the tail degrades", 1, shapes.count { it == "CodeBlock" })
+        assertEquals("the degraded tail is last", "CodeBlock", shapes.last())
+        assertEquals(
+            "a capped segment must not poison the prefix: finishing must equal a full parse",
+            debugParseBlockRaws(whole),
+            debugParseIncrementalRaws(listOf(whole)),
+        )
+    }
 }
