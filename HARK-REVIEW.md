@@ -1,6 +1,6 @@
 # HARK-REVIEW — Android markdown renderer, native OOM crash fix
 
-Branch `android-md-parse-tailcap`, commit `88891e1`, on a fork of `OpenMinis/OpenMinis` (GPLv3).
+Branch `android-md-parse-tailcap`, commit `2e57041`, on a fork of `OpenMinis/OpenMinis` (GPLv3).
 The functional change is `+72 / -3` in
 `src/android/app/src/main/java/com/openminis/app/ui/chat/StreamingMarkdownText.kt`.
 
@@ -10,10 +10,10 @@ file. It also records what a first review round found and what changed in
 response — see §0.
 
 ```
-HARK-REVIEW.md                                     |  727 ++++++
- hark-md-parse-tailcap.patch                        | 2441 ++++++++++++++++++++
- .../openminis/app/ui/chat/StreamingMarkdownText.kt |  146 +-
- 3 files changed, 3311 insertions(+), 3 deletions(-)
+HARK-REVIEW.md                                     | 727 +++++++++++++++++++++
+ hark-md-parse-tailcap.patch                        | 211 ++++++
+ .../openminis/app/ui/chat/StreamingMarkdownText.kt | 146 ++++-
+ 3 files changed, 1081 insertions(+), 3 deletions(-)
 ```
 
 ---
@@ -21,7 +21,7 @@ HARK-REVIEW.md                                     |  727 ++++++
 ## 0. Changes since the first review round
 
 A first read of this branch raised six points. Five were accepted, one was
-rejected as mis-scoped. All of them are reflected in `88891e1`.
+rejected as mis-scoped. All of them are reflected in `2e57041`.
 
 | # | Raised | Verdict | What changed |
 |---|---|---|---|
@@ -723,5 +723,5 @@ their initial HTML. These return raw text:
 
 - This file: `https://raw.githubusercontent.com/jiangyuchen144-cmd/OpenMinis/android-md-parse-tailcap/HARK-REVIEW.md`
 - Patch:     `https://raw.githubusercontent.com/jiangyuchen144-cmd/OpenMinis/android-md-parse-tailcap/hark-md-parse-tailcap.patch`
-- Commit patch: `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/88891e1.patch`
-- Commit diff:  `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/88891e1.diff`
+- Commit patch: `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/2e57041.patch`
+- Commit diff:  `https://github.com/jiangyuchen144-cmd/OpenMinis/commit/2e57041.diff`
