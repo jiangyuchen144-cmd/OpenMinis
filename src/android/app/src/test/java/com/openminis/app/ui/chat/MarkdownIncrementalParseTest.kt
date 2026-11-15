@@ -225,31 +225,63 @@ class MarkdownIncrementalParseTest {
     @Test
     fun `a finished message gets its markdown back after being capped live`() {
         // The regression this cap could introduce: capped while streaming, then
-        // the stream ends with the SAME text, so the effect key is the only
-        // thing that can re-trigger the parse. The parse itself must return
-        // real blocks for streaming = false.
+        // the stream ends with the SAME text. Both steps must run on the SAME
+        // IncrementalParseState — that is the live state of the composable, and
+        // reusing it is what the production path does. A helper that builds a
+        // fresh state per text cannot observe this at all.
         val big = "x".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY + 1)
-        assertEquals(listOf("CodeBlock"), debugParseIncrementalShapes(listOf(big), streaming = true))
-        assertEquals(listOf("Paragraph"), debugParseIncrementalShapes(listOf(big), streaming = false))
+        val trace = debugParseSequenceTrace(listOf(big to true, big to false))
+        assertEquals("while live, the tail is one preformatted block",
+            listOf("CodeBlock|$big"), trace[0])
+        assertEquals("after the flip, the same state re-parses it as markdown",
+            listOf("Paragraph|$big"), trace[1])
     }
 
     @Test
-    fun `the synthesized block never enters the cached prefix`() {
-        // If it did, a later freeze would append real blocks beside a fake one.
-        // Layout: a frozen prefix of paragraphs, then an over-budget tail — so
-        // the result is Paragraph*N + CodeBlock, and the CodeBlock must stay out
-        // of the cache.
+    fun `a capped tail becomes a frozen prefix when more text arrives`() {
+        // The sequence that could poison the cache: a live capped tail, then an
+        // append that seals it into the frozen prefix, then the stream ends.
+        // If the synthesized CodeBlock ever reached state.prefixBlocks, the
+        // final render would contain it beside the real blocks; comparing raws
+        // alone would not catch that because a CodeBlock and a Paragraph built
+        // from the same text share a raw string, which is why the trace
+        // carries the block type.
         val head = (1..10).joinToString("\n\n") { "h$it" }
         val tail = "x".repeat(DEBUG_MAX_LIVE_TAIL_CHARS_TEST_ONLY + 1)
-        val whole = head + "\n\n" + tail
-        val shapes = debugParseIncrementalShapes(listOf(whole, whole), streaming = true)
-        assertEquals("the frozen prefix keeps its real blocks", 10, shapes.count { it == "Paragraph" })
-        assertEquals("only the tail degrades", 1, shapes.count { it == "CodeBlock" })
-        assertEquals("the degraded tail is last", "CodeBlock", shapes.last())
-        assertEquals(
-            "a capped segment must not poison the prefix: finishing must equal a full parse",
-            debugParseBlockRaws(whole),
-            debugParseIncrementalRaws(listOf(whole)),
+        val capped = "$head\n\n$tail"
+        val appended = "$capped\n\nnext para"
+
+        val trace = debugParseSequenceTrace(
+            listOf(head to true, capped to true, appended to false),
         )
+        assertEquals("step 0: an ordinary live prefix is all paragraphs",
+            10, trace[0].count { it.startsWith("Paragraph|") })
+        assertEquals("step 1: the over-budget tail is one preformatted block",
+            1, trace[1].count { it.startsWith("CodeBlock|") })
+        assertEquals("step 1: the degraded block is last", true,
+            trace[1].last().startsWith("CodeBlock|"))
+        assertEquals("step 2: no synthesized block survives the freeze",
+            0, trace[2].count { it.startsWith("CodeBlock|") })
+        assertEquals("step 2: the finished render equals one full parse",
+            debugParseBlockTypedRaws(appended), trace[2])
+    }
+
+    @Test
+    fun `a full parse and an incremental replay agree on block types too`() {
+        // The pre-existing equivalence helper compares raw text only. Types are
+        // now part of the contract, so pin them as well.
+        val full = buildString {
+            append("# Title\n\n")
+            append("Intro with `code`.\n\n")
+            append("- one\n- two\n\n")
+            append("1. first\n2. second\n\n")
+            append("```kotlin\nfun f() {\n\n    println(1)\n}\n```\n\n")
+            append("| a | b |\n|---|---|\n| 1 | 2 |\n\n")
+            append("Closing paragraph.\n")
+        }
+        val chunks = generateSequence(29) { it + 29 }.takeWhile { it < full.length }
+            .map { full.substring(0, it) }.toList() + listOf(full)
+        val replayed = debugParseSequenceResult(chunks.map { it to true })
+        assertEquals(debugParseBlockTypedRaws(full), replayed)
     }
 }

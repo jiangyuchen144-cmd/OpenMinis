@@ -2047,12 +2047,15 @@ private const val MAX_INCREMENTAL_LIVE_TAIL_LINES = 512
  * misses carriage-return-only content entirely — a terminal progress bar
  * (`"10%\r50%\rdone"`) is three lines to `lines()` and one to a '\n' scan.
  *
- * Returns exactly `lines().size` for the range, so the invariant is
- * unconditional: an empty range is 1 (as `"".lines().size` is 1), and a
- * trailing separator opens one more empty line (as `"a\n".lines().size` is 2).
- * A value greater than [limit] means "over budget"; the exact figure past that
- * point is not needed, and walking a huge tail to get it would defeat the
- * purpose. Allocation-free, no regex, no substring.
+ * Returns `lines().size` for the range — CRLF is one separator, a trailing
+ * separator opens one more (empty) line, and an empty range is 1, exactly as
+ * `lines()` counts them. Allocation-free, no regex, no substring.
+ *
+ * [limit] is a short-circuit, not a clamp: while the count stays within it the
+ * result is the exact line count, and the moment it exceeds it the function
+ * returns some value greater than [limit] without walking the rest. Callers
+ * must therefore treat the return as "exact, or known to be over budget" and
+ * compare with `>`, never as a number to display.
  */
 private fun countLinesUpTo(content: String, from: Int, limit: Int): Int {
     var lineCount = 1
@@ -2185,11 +2188,54 @@ internal fun debugParseIncrementalShapes(
     }
 
 /**
- * [T-android-md-parse-tailcap] Test hook: the live-tail line budget's answer for
- * [content] starting at [from]. Exposed so the budget can be pinned against
- * `String.lines().size` — the whole point of the counter is that it must mean
- * what `lines()` means (CRLF, LF and bare CR alike).
+ * [T-android-md-parse-tailcap] Test hook: drive ONE [IncrementalParseState]
+ * through a sequence of `(text, streaming)` steps and report the blocks after
+ * each step as `Type|raw`.
+ *
+ * Why a sequence and not a per-text call: the behaviour under test is a state
+ * TRANSITION — "capped while live, then finished with the same text" and
+ * "capped, then more text arrives and the capped tail becomes a frozen
+ * prefix". Tearing down the state between steps (as a per-text helper must)
+ * tests two independent parses and cannot observe prefix reuse at all.
+ *
+ * The type is included because `raw` alone cannot distinguish a synthesized
+ * `CodeBlock` from a `Paragraph` holding the same text — they are constructed
+ * with the same raw string, so a raw-only comparison would silently pass if the
+ * cap leaked into the cache.
  */
+internal fun debugParseSequenceTrace(
+    steps: List<Pair<String, Boolean>>,
+): List<List<String>> =
+    kotlinx.coroutines.runBlocking {
+        val state = IncrementalParseState()
+        val trace = mutableListOf<List<String>>()
+        for ((text, streaming) in steps) {
+            trace.add(
+                parseMarkdownIncremental(text, state, streaming = streaming)
+                    .map { "${it::class.simpleName.orEmpty()}|${it.raw}" },
+            )
+        }
+        trace
+    }
+
+/**
+ * [T-android-md-parse-tailcap] Test hook: the last step of
+ * [debugParseSequenceTrace], as `Type|raw`, for comparing a transition's end
+ * state against one full parse.
+ */
+internal fun debugParseSequenceResult(steps: List<Pair<String, Boolean>>): List<String> =
+    debugParseSequenceTrace(steps).last()
+
+/**
+ * [T-android-md-parse-tailcap] Test hook: one full parse, as `Type|raw` — the
+ * reference a sequence's final step must reproduce.
+ */
+internal fun debugParseBlockTypedRaws(content: String): List<String> =
+    kotlinx.coroutines.runBlocking {
+        parseMarkdownBlocks(content).map { "${it::class.simpleName.orEmpty()}|${it.raw}" }
+    }
+
+/** [T-android-md-parse-tailcap] Test hook: finite line budget, for boundary tests. */
 internal fun debugLiveTailLineCount(content: String, from: Int = 0, limit: Int = Int.MAX_VALUE): Int =
     countLinesUpTo(content, from, limit)
 
