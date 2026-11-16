@@ -13,6 +13,8 @@ package com.openminis.minimal.data
 
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.util.concurrent.TimeUnit
@@ -33,7 +35,16 @@ object KeyCheck {
      * a working state even though the key is valid — so it is reported as a
      * failure rather than as a pass that leads nowhere.
      */
-    fun verify(apiKey: String): Boolean {
+    /**
+     * MUST be called off the main thread.
+     *
+     * This is `suspend` and switches to IO on purpose: the first version was a
+     * plain blocking function called from a Compose LaunchedEffect, which runs
+     * on the main thread — every check threw NetworkOnMainThreadException,
+     * `runCatching` swallowed it, and the UI dutifully reported "key not
+     * accepted" about a key that was fine.
+     */
+    suspend fun verify(apiKey: String): Boolean = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("https://api.deepseek.com/v1/models")
             .header("Authorization", "Bearer $apiKey")
@@ -56,6 +67,6 @@ object KeyCheck {
             }
         }
         result.onFailure { android.util.Log.w("MinimalKey", "verify threw", it) }
-        return result.getOrDefault(false)
+        result.getOrDefault(false)
     }
 }
