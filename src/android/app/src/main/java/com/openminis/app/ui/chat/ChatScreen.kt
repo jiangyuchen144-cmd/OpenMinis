@@ -641,6 +641,7 @@ fun ChatScreen(
     val compactProgress by viewModel.compactProgress.collectAsState()
     val error by viewModel.error.collectAsState()
     val modelName by viewModel.modelName.collectAsState()
+    val activeModelSlug by viewModel.activeModelSlug.collectAsState()
     val sessionTitle by viewModel.sessionTitle.collectAsState()
     val sessionCategory by viewModel.sessionCategory.collectAsState()
     val attachments by viewModel.attachments.collectAsState()
@@ -3039,6 +3040,12 @@ fun ChatScreen(
                             // read as "reply finished".
                             completedSuccessfully = {
                                 viewModel.lastTurnEndReason.value == TurnEndReason.Completed
+                            },
+                            // Per-model artwork, matched on the API slug rather
+                            // than the display name (user-editable, localized,
+                            // and ambiguous for aggregator entries).
+                            workingIconRes = remember(activeModelSlug, modelName) {
+                                modelWorkingIconRes(activeModelSlug, modelName)
                             },
                         ) {
                             // Nav title: current session title when one

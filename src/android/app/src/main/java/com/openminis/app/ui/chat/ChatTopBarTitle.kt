@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.provider.Settings
+import androidx.annotation.DrawableRes
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
@@ -36,11 +37,13 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -57,6 +60,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.graphics.Color
@@ -66,12 +70,15 @@ import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.openminis.app.R
 import com.openminis.app.ui.theme.ChatColors
 import kotlin.math.PI
 import kotlin.math.sin
@@ -118,12 +125,30 @@ fun ChatTopBarTitle(
      */
     completedSuccessfully: () -> Boolean,
     modifier: Modifier = Modifier,
+    /** Per-model artwork for the working state; null falls back to the rings. */
+    @DrawableRes workingIconRes: Int? = null,
     titleContent: @Composable () -> Unit,
 ) {
     val reduced = rememberReducedMotion()
     // Read inside the effect without making `reduced` a restart key: toggling
     // the system setting mid-stream must not restart the phase machine.
     val reducedState = rememberUpdatedState(reduced)
+    // [T-android-topbar-title-slot] The success verdict is deliberately NOT
+    // wrapped in rememberUpdatedState, and deliberately not a LaunchedEffect
+    // key. Both would break it:
+    //
+    //   * as a KEY it restarts this coroutine whenever the verdict changes,
+    //     resetting the phase timing (out-delay, minimum-display remainder);
+    //   * as rememberUpdatedState(completedSuccessfully()) it would only refresh
+    //     on RECOMPOSITION, and `lastTurnEndReason` is read through .value here
+    //     rather than collected, so it never forces one. The snapshot would
+    //     freeze at whatever the PREVIOUS run's verdict was — exactly the stale
+    //     read this is meant to avoid.
+    //
+    // Calling completedSuccessfully() inside the effect reads the live .value
+    // instead, and it is only called after the delays below (300 ms out-delay
+    // plus the minimum-display remainder), which is far longer than a StateFlow
+    // emit takes to reach its own collector.
 
     var phase by remember(sessionKey) { mutableStateOf(TitlePhase.Idle) }
     var showDone by remember(sessionKey) { mutableStateOf(false) }
@@ -148,11 +173,17 @@ fun ChatTopBarTitle(
             // failed run may still be flashing the fallback pulse right here,
             // which a check would contradict.
             if (reducedState.value || !completedSuccessfully()) {
+                // Explicit, not implied by the Working branch above: `showDone`
+                // survives into Idle after a Done phase, so leaving it set here
+                // would make the NEXT transition read a stale "done" and skip
+                // the indicator's re-arm.
+                showDone = false
                 phase = TitlePhase.Idle
             } else {
                 showDone = true
                 phase = TitlePhase.Done
                 delay(DONE_HOLD_MS)
+                showDone = false
                 phase = TitlePhase.Idle
             }
         }
@@ -214,7 +245,7 @@ fun ChatTopBarTitle(
                 contentDescription = if (showDone) doneDescription else workingDescription
             },
         ) {
-            WorkingIndicator(done = showDone, animated = !reduced)
+            WorkingIndicator(done = showDone, animated = !reduced, iconRes = workingIconRes)
         }
 
         // The title keeps its rename clickable even at alpha 0, so swallow taps
@@ -231,12 +262,44 @@ fun ChatTopBarTitle(
 }
 
 /**
- * Drawn, not an image asset: the project ships no per-model icons, and a vector
- * keeps this working before any artwork exists. Rings + a breathing core while
- * working; a filled circle with a check when done.
+ * [T-android-topbar-title-slot] Which icon to show for the working model, or
+ * null to fall back to the drawn rings.
+ *
+ * Matched on the model's API slug first (stable, not user-editable, and
+ * unambiguous when one aggregator entry serves many models), then on the
+ * display name as a courtesy. Null means "no artwork for this model", which is
+ * every model but DeepSeek today — the drawn indicator still works, so a model
+ * without art is not a broken state.
+ */
+@DrawableRes
+internal fun modelWorkingIconRes(slug: String, modelName: String): Int? {
+    val key = "$slug $modelName".lowercase()
+    return when {
+        "deepseek" in key -> R.drawable.ic_model_working_default
+        else -> null
+    }
+}
+
+/**
+ * Drawn, not an image asset, for every model without art: the project ships no
+ * per-model icons beyond the one placeholder, and a vector keeps this working
+ * before any artwork exists.
+ *
+ * With [iconRes] the artwork is drawn as a circular avatar over the same
+ * expanding rings, with a slow float + sway. Without it, the rings and a
+ * breathing core stand alone.
  */
 @Composable
-private fun WorkingIndicator(done: Boolean, animated: Boolean, modifier: Modifier = Modifier) {
+private fun WorkingIndicator(
+    done: Boolean,
+    animated: Boolean,
+    modifier: Modifier = Modifier,
+    /**
+     * Per-model artwork. Only used while working; the done check stays drawn so
+     * it is legible at 28dp regardless of what the art looks like.
+     */
+    @DrawableRes iconRes: Int? = null,
+) {
     val accent = ChatColors.link
     val onAccent = Color.White
 
@@ -273,42 +336,104 @@ private fun WorkingIndicator(done: Boolean, animated: Boolean, modifier: Modifie
         }
     }
 
-    Canvas(
+    val breathe = if (animated) 0.5f + 0.5f * sin(2f * PI.toFloat() * t.value) else 0.5f
+    val sway = if (animated) 3f * sin(2f * PI.toFloat() * t.value) else 0f
+
+    if (iconRes == null) {
+        Canvas(
+            modifier = modifier
+                .size(28.dp)
+                .graphicsLayer {
+                    scaleX = pop.value
+                    scaleY = pop.value
+                },
+        ) {
+            val maxR = size.minDimension / 2f
+            if (done) {
+                drawCircle(color = accent, radius = maxR * 0.62f)
+                val c = center
+                val r = maxR * 0.62f
+                val check = Path().apply {
+                    moveTo(c.x - r * 0.45f, c.y + r * 0.02f)
+                    lineTo(c.x - r * 0.10f, c.y + r * 0.38f)
+                    lineTo(c.x + r * 0.50f, c.y - r * 0.30f)
+                }
+                drawPath(
+                    path = check,
+                    color = onAccent,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
+                )
+            } else {
+                // Two offset rings chasing outward, plus a breathing core.
+                val ringCount = if (animated) 2 else 1
+                repeat(ringCount) { i ->
+                    val p = if (animated) (t.value + i * 0.5f) % 1f else 0.5f
+                    drawCircle(
+                        color = accent.copy(alpha = (1f - p) * 0.55f),
+                        radius = maxR * (0.4f + 0.6f * p),
+                        style = Stroke(width = 1.5.dp.toPx()),
+                    )
+                }
+                drawCircle(color = accent, radius = maxR * (0.28f + 0.10f * breathe))
+            }
+        }
+        return
+    }
+
+    // Per-model artwork: the same rings behind a circular avatar, with the
+    // float/sway borrowed from the character's pose in the artwork.
+    Box(
         modifier = modifier
             .size(28.dp)
             .graphicsLayer {
                 scaleX = pop.value
                 scaleY = pop.value
             },
+        contentAlignment = Alignment.Center,
     ) {
-        val maxR = size.minDimension / 2f
-        if (done) {
-            drawCircle(color = accent, radius = maxR * 0.62f)
-            val c = center
-            val r = maxR * 0.62f
-            val check = Path().apply {
-                moveTo(c.x - r * 0.45f, c.y + r * 0.02f)
-                lineTo(c.x - r * 0.10f, c.y + r * 0.38f)
-                lineTo(c.x + r * 0.50f, c.y - r * 0.30f)
-            }
-            drawPath(
-                path = check,
-                color = onAccent,
-                style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
-            )
-        } else {
-            // Two offset rings chasing outward, plus a breathing core.
-            val ringCount = if (animated) 2 else 1
-            repeat(ringCount) { i ->
-                val p = if (animated) (t.value + i * 0.5f) % 1f else 0.5f
-                drawCircle(
-                    color = accent.copy(alpha = (1f - p) * 0.55f),
-                    radius = maxR * (0.4f + 0.6f * p),
-                    style = Stroke(width = 1.5.dp.toPx()),
+        // Rings stay drawn (not art) so the indicator still animates even with
+        // a still image sitting on top of it.
+        Canvas(modifier = Modifier.matchParentSize()) {
+            val maxR = size.minDimension / 2f
+            if (done) {
+                drawCircle(color = accent, radius = maxR * 0.62f)
+                val c = center
+                val r = maxR * 0.62f
+                val check = Path().apply {
+                    moveTo(c.x - r * 0.45f, c.y + r * 0.02f)
+                    lineTo(c.x - r * 0.10f, c.y + r * 0.38f)
+                    lineTo(c.x + r * 0.50f, c.y - r * 0.30f)
+                }
+                drawPath(
+                    path = check,
+                    color = onAccent,
+                    style = Stroke(width = 2.dp.toPx(), cap = StrokeCap.Round, join = StrokeJoin.Round),
                 )
+            } else {
+                val ringCount = if (animated) 2 else 1
+                repeat(ringCount) { i ->
+                    val p = if (animated) (t.value + i * 0.5f) % 1f else 0.5f
+                    drawCircle(
+                        color = accent.copy(alpha = (1f - p) * 0.55f),
+                        radius = maxR * (0.4f + 0.6f * p),
+                        style = Stroke(width = 1.5.dp.toPx()),
+                    )
+                }
             }
-            val breathe = if (animated) 0.5f + 0.5f * sin(2f * PI.toFloat() * t.value) else 0.5f
-            drawCircle(color = accent, radius = maxR * (0.28f + 0.10f * breathe))
+        }
+        if (!done) {
+            Image(
+                painter = painterResource(iconRes),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .size(20.dp)
+                    .graphicsLayer {
+                        rotationZ = sway
+                        translationY = if (animated) -1.5f * breathe else 0f
+                    }
+                    .clip(CircleShape),
+            )
         }
     }
 }

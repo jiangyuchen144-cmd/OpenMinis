@@ -2444,6 +2444,21 @@ class ChatViewModel(
     private var currentModel: LLMModel? = null
 
     /**
+     * [T-android-topbar-title-slot] The active model's API slug (e.g.
+     * `deepseek-chat`), for UI that picks a per-model affordance.
+     *
+     * Derived from the same `currentModel` assignment every `_modelName`
+     * setter already performs, so it cannot drift from the name shown in the
+     * UI. The slug, not the display name: display names are user-editable and
+     * localized, and an aggregator entry can serve many models, so a name
+     * match would be both unstable and ambiguous.
+     *
+     * Empty until a model resolves.
+     */
+    private val _activeModelSlug = MutableStateFlow("")
+    val activeModelSlug: StateFlow<String> = _activeModelSlug.asStateFlow()
+
+    /**
      * Does the CURRENTLY RESOLVED main model natively consume image pixels?
      *
      * Single source of truth for the three decisions that must agree: whether
@@ -6501,6 +6516,7 @@ class ChatViewModel(
                 val entry = findModelEntry(session.modelId)
                 if (entry != null) {
                     currentModel = entry.model
+                    _activeModelSlug.value = entry.model.id
                     _modelName.value = entry.model.displayName
                     _activeEntryId.value = entry.id
                     val instance = providerRepository.instance(entry.providerInstanceId)
@@ -7234,6 +7250,7 @@ class ChatViewModel(
                     if (!providerRepository.hasAnyCredential(instance)) return false
                     val apiKey = providerRepository.usableApiKey(instance) ?: ""
                     currentModel = entry.model
+                    _activeModelSlug.value = entry.model.id
                     _modelName.value = entry.model.displayName
                     _providerName.value = instance.label.ifEmpty { entry.model.provider }
                     _selectedGroupId.value = null
@@ -7310,6 +7327,8 @@ class ChatViewModel(
         val apiKey = providerRepository.usableApiKey(instance) ?: ""
 
         currentModel = targetEntry.model
+
+        _activeModelSlug.value = targetEntry.model.id
         _modelName.value = targetEntry.model.displayName
         _providerName.value = instance.label.ifEmpty { targetEntry.model.provider }
         _selectedGroupName.value = group.name
@@ -7610,6 +7629,7 @@ class ChatViewModel(
             ?: return false
         val instance = providerRepository.instance(entry.providerInstanceId) ?: return false
         currentModel = entry.model
+        _activeModelSlug.value = entry.model.id
         _modelName.value = entry.model.displayName
         _activeEntryId.value = entry.id
         _providerName.value = instance.label.ifEmpty { entry.model.provider }
@@ -7659,6 +7679,8 @@ class ChatViewModel(
         cancelWorkBoundToPreviousModel("selectEntry")
 
         currentModel = entry.model
+
+        _activeModelSlug.value = entry.model.id
         // An explicit user pick is a statement that this model should be tried
         // again — clear any failure mark so the group pick stops avoiding it.
         recentlyFailedEntryIds.remove(entry.id)
@@ -7759,6 +7781,7 @@ class ChatViewModel(
             if (newEntry != null) {
                 _activeEntryId.value = newEntry.id
                 currentModel = newEntry.model
+                _activeModelSlug.value = newEntry.model.id
                 val newInstance = providerRepository.instance(newEntry.providerInstanceId)
                 if (newInstance != null) {
                     _providerName.value = newInstance.label.ifEmpty { newEntry.model.provider }
@@ -7933,6 +7956,7 @@ class ChatViewModel(
         if (newEntry != null) {
             _activeEntryId.value = newEntry.id
             currentModel = newEntry.model
+            _activeModelSlug.value = newEntry.model.id
             providerRepository.instance(newEntry.providerInstanceId)?.let { inst ->
                 _providerName.value = inst.label.ifEmpty { newEntry.model.provider }
             }
@@ -7973,6 +7997,8 @@ class ChatViewModel(
             val apiKey = providerRepository.usableApiKey(instance) ?: ""
 
             currentModel = entry.model
+
+            _activeModelSlug.value = entry.model.id
             _modelName.value = entry.model.displayName
             _activeEntryId.value = entry.id
             val provider = ProviderFactory.create(instance, apiKey, entry.model, context, sessionId = activeSessionId, overrides = entry.overrides)
