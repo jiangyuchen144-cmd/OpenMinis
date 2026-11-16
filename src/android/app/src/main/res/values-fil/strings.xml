@@ -1640,17 +1640,6 @@
     <string name="a11y_service_description">Pinapayagan ang Minis na basahin ang istruktura ng UI sa screen, mag-tap at gumawa ng galaw, at tumanggap ng mga event ng system para sa mga Agent na tumatawag ng android-a11y-cli.</string>
     <string name="a11y_service_summary">Backend ng automation sa antas ng UI para sa Minis</string>
     <string name="back">Bumalik</string>
-    <string name="sessionlist_welcome_title">Maligayang pagdating sa Minis</string>
-    <string name="sessionlist_welcome_subtitle">Halos handa na ang unang On-Device Agent mo.</string>
-    <string name="sessionlist_welcome_step1_title">Magdagdag ng Provider</string>
-    <string name="sessionlist_welcome_step1_subtitle">Magtakda ng API key o mag-sign in gamit ang OAuth</string>
-    <string name="sessionlist_welcome_step2_title">Pumili ng Mga Model</string>
-    <string name="sessionlist_welcome_step2_subtitle">Piliin ang mga model na gusto mong gamitin</string>
-    <string name="sessionlist_welcome_step2_locked">Tapusin muna ang hakbang 1</string>
-    <string name="sessionlist_welcome_step3_title">Magsimula ng Usapan</string>
-    <string name="sessionlist_welcome_step3_subtitle">I-tap para magsimula</string>
-    <string name="sessionlist_welcome_step3_locked">Tapusin muna ang hakbang 2</string>
-    <string name="sessionlist_welcome_step_done">Tapos</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">Wala na ang pinagmulang file.</string>
     <string name="webapp_external_nav_blocked">Hinarang ang panlabas na navigation.</string>

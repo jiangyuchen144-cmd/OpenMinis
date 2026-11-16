@@ -1648,17 +1648,6 @@
     <string name="a11y_service_description">Pozwala aplikacji Minis odczytywać strukturę interfejsu na ekranie, wykonywać dotknięcia i gesty oraz odbierać zdarzenia systemowe w imieniu Agentów wywołujących android-a11y-cli.</string>
     <string name="a11y_service_summary">Zaplecze automatyzacji interfejsu dla Minis</string>
     <string name="back">Wstecz</string>
-    <string name="sessionlist_welcome_title">Witamy w Minis</string>
-    <string name="sessionlist_welcome_subtitle">Twój pierwszy Agent na urządzeniu jest prawie gotowy.</string>
-    <string name="sessionlist_welcome_step1_title">Dodaj dostawcę</string>
-    <string name="sessionlist_welcome_step1_subtitle">Skonfiguruj klucz API lub zaloguj się przez OAuth</string>
-    <string name="sessionlist_welcome_step2_title">Wybierz modele</string>
-    <string name="sessionlist_welcome_step2_subtitle">Wybierz modele, których chcesz używać</string>
-    <string name="sessionlist_welcome_step2_locked">Najpierw ukończ krok 1</string>
-    <string name="sessionlist_welcome_step3_title">Rozpocznij rozmowę</string>
-    <string name="sessionlist_welcome_step3_subtitle">Dotknij, aby zacząć</string>
-    <string name="sessionlist_welcome_step3_locked">Najpierw ukończ krok 2</string>
-    <string name="sessionlist_welcome_step_done">Gotowe</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">Plik źródłowy już nie istnieje.</string>
     <string name="webapp_external_nav_blocked">Zablokowano nawigację zewnętrzną.</string>

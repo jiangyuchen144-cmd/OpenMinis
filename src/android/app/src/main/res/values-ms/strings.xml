@@ -1640,17 +1640,6 @@
     <string name="a11y_service_description">Membolehkan Minis membaca struktur antara muka pada skrin, melakukan ketikan dan gerak isyarat, serta menerima peristiwa sistem bagi pihak Ejen yang memanggil android-a11y-cli.</string>
     <string name="a11y_service_summary">Backend automasi lapisan antara muka untuk Minis</string>
     <string name="back">Kembali</string>
-    <string name="sessionlist_welcome_title">Selamat datang ke Minis</string>
-    <string name="sessionlist_welcome_subtitle">Ejen On-Device pertama anda hampir sedia.</string>
-    <string name="sessionlist_welcome_step1_title">Tambah Pembekal</string>
-    <string name="sessionlist_welcome_step1_subtitle">Tetapkan kunci API atau log masuk dengan OAuth</string>
-    <string name="sessionlist_welcome_step2_title">Pilih Model</string>
-    <string name="sessionlist_welcome_step2_subtitle">Pilih model yang anda ingin gunakan</string>
-    <string name="sessionlist_welcome_step2_locked">Selesaikan langkah 1 dahulu</string>
-    <string name="sessionlist_welcome_step3_title">Mulakan Perbualan</string>
-    <string name="sessionlist_welcome_step3_subtitle">Ketik untuk bermula</string>
-    <string name="sessionlist_welcome_step3_locked">Selesaikan langkah 2 dahulu</string>
-    <string name="sessionlist_welcome_step_done">Selesai</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">Fail sumber sudah tiada.</string>
     <string name="webapp_external_nav_blocked">Navigasi ke luar disekat.</string>

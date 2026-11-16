@@ -1957,18 +1957,6 @@
     <string name="back">Back</string>
 
     <!-- Welcome / onboarding (T332) -->
-    <string name="sessionlist_welcome_title">Welcome to Minis</string>
-    <string name="sessionlist_welcome_subtitle">Your first On-Device Agent is almost ready.</string>
-    <string name="sessionlist_welcome_step1_title">Add a Provider</string>
-    <string name="sessionlist_welcome_step1_subtitle">Configure an API key or sign in with OAuth</string>
-    <string name="sessionlist_welcome_step2_title">Select Models</string>
-    <string name="sessionlist_welcome_step2_subtitle">Choose the models you want to use</string>
-    <string name="sessionlist_welcome_step2_locked">Complete step 1 first</string>
-    <string name="sessionlist_welcome_step3_title">Start a Conversation</string>
-    <string name="sessionlist_welcome_step3_subtitle">Tap to begin</string>
-    <string name="sessionlist_welcome_step3_locked">Complete step 2 first</string>
-    <string name="sessionlist_welcome_restore_backup">Have a backup? Restore from it</string>
-    <string name="sessionlist_welcome_step_done">Done</string>
 
     <!-- T-pwa-1: WebApp shortcut foundation (renamed from PWA) -->
     <string name="webapp_activity_label">Minis WebApp</string>

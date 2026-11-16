@@ -1641,17 +1641,6 @@
     <string name="a11y_service_description">ให้ Minis อ่านโครงสร้างหน้าจอ แตะและทำท่าทาง รวมถึงรับเหตุการณ์ของระบบแทน Agent ที่เรียกใช้ android-a11y-cli</string>
     <string name="a11y_service_summary">แบ็กเอนด์ระบบอัตโนมัติระดับหน้าจอสำหรับ Minis</string>
     <string name="back">ย้อนกลับ</string>
-    <string name="sessionlist_welcome_title">ยินดีต้อนรับสู่ Minis</string>
-    <string name="sessionlist_welcome_subtitle">Agent บนอุปกรณ์ตัวแรกของคุณเกือบพร้อมแล้ว</string>
-    <string name="sessionlist_welcome_step1_title">เพิ่มผู้ให้บริการ</string>
-    <string name="sessionlist_welcome_step1_subtitle">ตั้งค่า API key หรือเข้าสู่ระบบด้วย OAuth</string>
-    <string name="sessionlist_welcome_step2_title">เลือกโมเดล</string>
-    <string name="sessionlist_welcome_step2_subtitle">เลือกโมเดลที่คุณต้องการใช้</string>
-    <string name="sessionlist_welcome_step2_locked">ทำขั้นตอนที่ 1 ให้เสร็จก่อน</string>
-    <string name="sessionlist_welcome_step3_title">เริ่มบทสนทนา</string>
-    <string name="sessionlist_welcome_step3_subtitle">แตะเพื่อเริ่ม</string>
-    <string name="sessionlist_welcome_step3_locked">ทำขั้นตอนที่ 2 ให้เสร็จก่อน</string>
-    <string name="sessionlist_welcome_step_done">เสร็จสิ้น</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">ไฟล์ต้นทางไม่มีอยู่แล้ว</string>
     <string name="webapp_external_nav_blocked">บล็อกการนำทางออกภายนอก</string>

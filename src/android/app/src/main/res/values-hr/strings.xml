@@ -1794,17 +1794,6 @@
     <string name="back">Natrag</string>
 
     <!-- Welcome / onboarding (T332) -->
-    <string name="sessionlist_welcome_title">Dobro došli u Minis</string>
-    <string name="sessionlist_welcome_subtitle">Vaš prvi Agent na uređaju gotovo je spreman.</string>
-    <string name="sessionlist_welcome_step1_title">Dodajte pružatelja usluge</string>
-    <string name="sessionlist_welcome_step1_subtitle">Postavite API ključ ili se prijavite putem OAutha</string>
-    <string name="sessionlist_welcome_step2_title">Odaberite modele</string>
-    <string name="sessionlist_welcome_step2_subtitle">Odaberite modele koje želite koristiti</string>
-    <string name="sessionlist_welcome_step2_locked">Najprije dovršite 1. korak</string>
-    <string name="sessionlist_welcome_step3_title">Započnite razgovor</string>
-    <string name="sessionlist_welcome_step3_subtitle">Dodirnite za početak</string>
-    <string name="sessionlist_welcome_step3_locked">Najprije dovršite 2. korak</string>
-    <string name="sessionlist_welcome_step_done">Gotovo</string>
 
     <!-- T-pwa-1: WebApp shortcut foundation (renamed from PWA) -->
     <string name="webapp_activity_label">Minis WebApp</string>

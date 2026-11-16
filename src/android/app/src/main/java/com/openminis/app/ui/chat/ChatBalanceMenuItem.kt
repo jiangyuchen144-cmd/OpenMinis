@@ -2,11 +2,10 @@ package com.openminis.app.ui.chat
 
 // [T-android-balance-menu] "API balance + top up" row for the chat ⋮ menu.
 //
-// [T-android-menu-radical] This is now the menu's ONLY row, and the row itself
-// is one line of small text: `余额 ¥1.50 │ 充值`. No icon, no filled pill, no
-// 48dp hit target, no full-width stretch. The balance figure is still produced
-// by the project's own quota model — this file only decides how it looks and
-// where the top-up link points.
+// Balance rendering is NOT implemented here: the project already has
+// QuotaSectionHeaderBadge, which resolves the instance's headline pool and
+// formats it. This file only adds what was missing — the top-up target and the
+// menu row that hosts both.
 
 import android.content.ActivityNotFoundException
 import android.content.Context
@@ -15,14 +14,12 @@ import android.net.Uri
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -32,10 +29,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 
 /**
  * [T-android-balance-menu] Which provider a top-up link belongs to.
@@ -55,7 +49,7 @@ import androidx.compose.ui.unit.sp
  *
  * URLs checked 2026-11-16 (HTTP 200 unless noted). A URL that could not be
  * confirmed is deliberately absent rather than guessed — an unknown provider
- * simply shows no top-up link.
+ * simply shows no top-up button.
  */
 internal object ProviderTopUp {
 
@@ -114,7 +108,7 @@ internal object ProviderTopUp {
      *   is NOT consulted: a relay or proxy whose label happens to contain
      *   "DeepSeek" holds its balance somewhere else, so falling back to the
      *   label would send the user to the wrong billing page. Unknown custom
-     *   host means no top-up link, which is the honest answer.
+     *   host means no top-up button, which is the honest answer.
      */
     fun urlFor(baseUrl: String?, label: String?): String? =
         if (baseUrl.isNullOrBlank()) byLabel(label) else byHost(baseUrl)
@@ -139,77 +133,66 @@ internal fun openExternalUrl(context: Context, url: String): Boolean {
 }
 
 /**
- * [T-android-menu-radical] The balance row, reduced to one line.
+ * [T-android-balance-menu] One menu row: icon, balance, and a "top up" pill.
  *
- * Layout is `balance │ top up`, 13sp, on the menu's own background. Everything
- * that used to make it heavy is gone: the wallet icon, the tinted capsule
- * behind the figure, the filled button with its 12dp radius, the implied 48dp
- * minimum height inherited from DropdownMenuItem, and the full-width stretch.
- *
- * Tapping the figure forces a refresh (the menu stays open so the spinner is
- * visible); tapping the link closes the menu and opens the provider's billing
- * page. They are separate clickables, so the inner one consumes the tap.
- *
- * @param balanceText already-formatted figure, e.g. "余额 ¥1.50". The caller
- *   resolves it through the quota model; an em dash means "unknown".
- * @param topUpText null when the provider has no known billing page, which is
- *   also how the link and its separator are hidden.
+ * @param balanceContent the balance itself — the caller passes
+ *   [com.openminis.app.ui.quota.QuotaSectionHeaderBadge] or an em dash. Kept as
+ *   a slot so this file needs no knowledge of the quota model.
+ * @param refreshing shows a small spinner beside the balance.
+ * @param topUpText null when the provider has no known top-up page, which is
+ *   also how the button is hidden.
+ * @param onRefresh tapping the row; the menu stays open so the spinner is
+ *   visible. Implementations should force a refresh.
+ * @param onTopUp tapping the pill; the caller closes the menu and opens the URL.
  */
 @Composable
 fun ChatBalanceMenuItem(
     a11yLabel: String,
     refreshing: Boolean,
-    balanceText: String,
     topUpText: String?,
     onRefresh: () -> Unit,
     onTopUp: () -> Unit,
+    leadingIcon: @Composable () -> Unit,
+    balanceContent: @Composable () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = modifier
-            .semantics { contentDescription = a11yLabel }
-            .clip(RoundedCornerShape(6.dp))
-            .clickable(onClick = onRefresh)
-            .padding(horizontal = 10.dp, vertical = 7.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(7.dp),
-    ) {
-        if (refreshing) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(11.dp),
-                strokeWidth = 1.5.dp,
-            )
-        }
-        Text(
-            text = balanceText,
-            fontSize = 13.sp,
-            lineHeight = 16.sp,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            // Tabular figures: the amount keeps its width while it refreshes,
-            // so the row does not twitch between "¥1.50" and "¥9.80".
-            style = MaterialTheme.typography.bodySmall.copy(fontFeatureSettings = "tnum"),
-        )
-        if (topUpText != null) {
-            Box(
-                modifier = Modifier
-                    .width(1.dp)
-                    .height(10.dp)
-                    .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)),
-            )
+    val trailing: (@Composable () -> Unit)? = if (topUpText != null) {
+        @Composable {
             Text(
                 text = topUpText,
-                fontSize = 13.sp,
-                lineHeight = 16.sp,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.primary,
-                maxLines = 1,
                 modifier = Modifier
-                    .clip(RoundedCornerShape(4.dp))
-                    .clickable(role = Role.Button, onClick = onTopUp),
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                    // Own clickable, so the pill does not also trigger the row's
+                    // refresh — the innermost clickable consumes the tap.
+                    .clickable(role = Role.Button, onClick = onTopUp)
+                    .padding(horizontal = 10.dp, vertical = 4.dp),
             )
         }
+    } else {
+        null
     }
+
+    DropdownMenuItem(
+        text = {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                if (refreshing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(12.dp),
+                        strokeWidth = 1.5.dp,
+                    )
+                }
+                balanceContent()
+            }
+        },
+        onClick = onRefresh,
+        leadingIcon = leadingIcon,
+        trailingIcon = trailing,
+        modifier = modifier.semantics { contentDescription = a11yLabel },
+    )
 }

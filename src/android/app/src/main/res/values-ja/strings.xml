@@ -1646,17 +1646,6 @@
     <string name="a11y_service_description">android-a11y-cli を利用するエージェントに代わって、Minis が画面の UI 構造を読み取り、タップやジェスチャーを実行し、システムイベントを受け取れるようにします。</string>
     <string name="a11y_service_summary">Minis の UI 層の自動化バックエンド</string>
     <string name="back">戻る</string>
-    <string name="sessionlist_welcome_title">Minis へようこそ</string>
-    <string name="sessionlist_welcome_subtitle">最初のオンデバイス Agent がもうすぐ準備完了です。</string>
-    <string name="sessionlist_welcome_step1_title">プロバイダを追加</string>
-    <string name="sessionlist_welcome_step1_subtitle">API キーを設定するか OAuth でサインイン</string>
-    <string name="sessionlist_welcome_step2_title">モデルを選択</string>
-    <string name="sessionlist_welcome_step2_subtitle">使用したいモデルを選択してください</string>
-    <string name="sessionlist_welcome_step2_locked">先にステップ 1 を完了してください</string>
-    <string name="sessionlist_welcome_step3_title">会話を開始</string>
-    <string name="sessionlist_welcome_step3_subtitle">タップして開始</string>
-    <string name="sessionlist_welcome_step3_locked">先にステップ 2 を完了してください</string>
-    <string name="sessionlist_welcome_step_done">完了</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">ソースファイルは存在しません。</string>
     <string name="webapp_external_nav_blocked">外部へのナビゲーションをブロックしました。</string>

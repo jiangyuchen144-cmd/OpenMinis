@@ -1642,17 +1642,6 @@
     <string name="a11y_service_description">android-a11y-cli를 사용하는 Agent를 대신해 Minis가 화면의 UI 구조를 읽고, 탭과 제스처를 실행하고, 시스템 이벤트를 받을 수 있도록 합니다.</string>
     <string name="a11y_service_summary">Minis의 UI 계층 자동화 백엔드</string>
     <string name="back">뒤로</string>
-    <string name="sessionlist_welcome_title">Minis에 오신 것을 환영합니다</string>
-    <string name="sessionlist_welcome_subtitle">첫 온디바이스 Agent가 곧 준비됩니다.</string>
-    <string name="sessionlist_welcome_step1_title">공급자 추가</string>
-    <string name="sessionlist_welcome_step1_subtitle">API 키를 설정하거나 OAuth로 로그인하세요</string>
-    <string name="sessionlist_welcome_step2_title">모델 선택</string>
-    <string name="sessionlist_welcome_step2_subtitle">사용할 모델을 선택하세요</string>
-    <string name="sessionlist_welcome_step2_locked">먼저 1단계를 완료하세요</string>
-    <string name="sessionlist_welcome_step3_title">대화 시작</string>
-    <string name="sessionlist_welcome_step3_subtitle">탭하여 시작</string>
-    <string name="sessionlist_welcome_step3_locked">먼저 2단계를 완료하세요</string>
-    <string name="sessionlist_welcome_step_done">완료</string>
     <string name="webapp_activity_label">Minis WebApp</string>
     <string name="webapp_source_missing">원본 파일이 더 이상 없습니다.</string>
     <string name="webapp_external_nav_blocked">외부 이동을 차단했습니다.</string>

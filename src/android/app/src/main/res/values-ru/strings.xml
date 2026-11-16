@@ -1649,17 +1649,6 @@
     <string name="a11y_service_description">Позволяет Minis читать структуру экранного UI, выполнять нажатия и жесты и получать системные события от имени Minis Agent, вызывающих android-a11y-cli.</string>
     <string name="a11y_service_summary">Бэкенд автоматизации UI-слоя для Minis</string>
     <string name="back">Назад</string>
-    <string name="sessionlist_welcome_title">Добро пожаловать в Minis</string>
-    <string name="sessionlist_welcome_subtitle">Ваш первый Agent на устройстве почти готов.</string>
-    <string name="sessionlist_welcome_step1_title">Добавить Провайдера</string>
-    <string name="sessionlist_welcome_step1_subtitle">Настройте ключ API или войдите через OAuth</string>
-    <string name="sessionlist_welcome_step2_title">Выбрать модели</string>
-    <string name="sessionlist_welcome_step2_subtitle">Выберите модели, которые хотите использовать</string>
-    <string name="sessionlist_welcome_step2_locked">Сначала завершите шаг 1</string>
-    <string name="sessionlist_welcome_step3_title">Начать разговор</string>
-    <string name="sessionlist_welcome_step3_subtitle">Нажмите, чтобы начать</string>
-    <string name="sessionlist_welcome_step3_locked">Сначала завершите шаг 2</string>
-    <string name="sessionlist_welcome_step_done">Готово</string>
     <string name="webapp_activity_label">Веб-приложение Minis</string>
     <string name="webapp_source_missing">Исходный файл больше не существует.</string>
     <string name="webapp_external_nav_blocked">Внешний переход заблокирован.</string>

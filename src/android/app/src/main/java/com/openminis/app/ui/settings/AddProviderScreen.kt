@@ -70,6 +70,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.res.stringResource
 import com.openminis.app.auth.OpenAIOAuthManager
 import com.openminis.app.auth.OpenRouterOAuthManager
+import com.openminis.app.data.model.ProviderAutoConfig
 import com.openminis.app.data.model.ProviderCredential
 import com.openminis.app.data.model.ProviderInstance
 import com.openminis.app.data.model.ProviderType
@@ -666,7 +667,7 @@ private fun ColumnScope.ApiKeyConfigSection(
         onClick = {
             if (!saveOnce.claim()) return@MinisButton
             val trimmedBase = customBaseURL.trim()
-            val instance = ProviderInstance(
+            val created = ProviderInstance(
                 id = UUID.randomUUID().toString(),
                 label = label.ifBlank { providerType.displayName },
                 providerType = providerType,
@@ -676,6 +677,13 @@ private fun ColumnScope.ApiKeyConfigSection(
                 // Only OpenAI-family providers expose the Responses API toggle.
                 useResponsesAPI = providerType == ProviderType.openAI && useResponsesAPI,
             )
+            // [T-android-provider-auto-config] The provider detail screen no
+            // longer offers a base-URL field, so this is the last moment the
+            // endpoint can be decided. A blank one on an OpenAI-compatible
+            // instance is filled from the label — pasting a DeepSeek key into
+            // an instance still pointing at api.openai.com would fail every
+            // request with no visible setting to fix it.
+            val instance = ProviderAutoConfig.apply(created)
             providerRepository.addInstance(instance)
             // [T-empty-key-compat-endpoints] Never persist an empty string as
             // the key — usableApiKey() treats absent as the keyless-valid case.
