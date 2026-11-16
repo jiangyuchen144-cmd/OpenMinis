@@ -24,6 +24,14 @@ name: Build APK
 
 on:
   workflow_dispatch:
+    inputs:
+      variant:
+        description: 'Build variant. release = R8-minified (≈9 min on a code change). perf = no R8 (≈4 min), same signing so it installs in place, and profileable/AOT-compiled like release so UI measurements still hold.'
+        type: choice
+        default: release
+        options:
+          - release
+          - perf
   push:
     branches:
       - android-md-parse-tailcap
@@ -201,11 +209,62 @@ jobs:
           restore-keys: |
             cxx-v1-
 
-      - name: Gradle assembleRelease
+      # Kotlin's incremental compilation state lives in `app/build/kotlin`, not
+      # in ~/.gradle. Without this cache every run compiles all ~700 Kotlin
+      # files from scratch, because a fresh daemon + a fresh build dir is the
+      # same thing as a clean build: measured 152 s for a one-file edit.
+      #
+      # Restored by a branch-scoped prefix rather than a hash, because the whole
+      # point is "the state from MY previous build" — a content-hashed key would
+      # never match once the sources it covers change.
+      - name: Cache build dir (Kotlin incremental state)
+        uses: actions/cache@v4
+        with:
+          path: |
+            src/android/app/build
+            src/android/build
+          key: build-v1-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            build-v1-${{ github.ref_name }}-
+
+      # A restored build dir may contain a previous run's APK. Delete it before
+      # building: `Locate APK` takes the first match, and shipping last week's
+      # binary under this week's tag is the one failure that looks like success.
+      - name: Discard stale outputs from the restored build dir
+        run: rm -rf src/android/app/build/outputs/apk src/android/app/build/outputs/bundle
+
+      - name: Resolve variant
+        id: variant
+        run: |
+          V="${{ github.event.inputs.variant }}"
+          V="${V:-release}"
+          case "$V" in
+            release) CAP=GithubRelease ;;
+            perf)    CAP=GithubPerf ;;
+            *) echo "::error::unknown variant '$V'"; exit 1 ;;
+          esac
+          echo "task=:app:assemble$CAP" >> $GITHUB_OUTPUT
+          echo "dir=$V" >> $GITHUB_OUTPUT
+          echo "name=$V" >> $GITHUB_OUTPUT
+          echo "building variant $V ($CAP)"
+
+      # Why `release` costs ~9 min and `perf` ~4:
+      #
+      # Everything cacheable IS cached — the log for a one-file change shows
+      # resource merge, manifest processing, CMake and asset packaging all
+      # FROM-CACHE. What remains cannot be cached, because neither task has an
+      # incremental mode over a changed class:
+      #   * compileGithubReleaseKotlin  152 s  (mitigated by the build-dir cache)
+      #   * minifyGithubReleaseWithR8   248 s  (R8 re-runs in full; nothing to do)
+      # The `perf` variant is `initWith(debug)` with isDebuggable=false and the
+      # same signing key, so it skips R8 entirely, installs in place, and is
+      # AOT-compiled/profileable like release — debug's interpreter numbers are
+      # what make plain `debug` useless for judging smoothness, not this.
+      - name: Gradle ${{ steps.variant.outputs.name }}
         working-directory: src/android
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleRelease \
+          ./gradlew "${{ steps.variant.outputs.task }}" \
             --build-cache --parallel --no-daemon --stacktrace \
             -Dorg.gradle.caching=true \
             -Dorg.gradle.vfs.watch=false \
@@ -214,34 +273,35 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find src/android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          APK=$(find src/android/app/build/outputs/apk -name '*.apk' | head -1)
           test -n "$APK" || { echo "no APK produced"; find src/android/app/build/outputs -maxdepth 3; exit 1; }
           echo "path=$APK" >> $GITHUB_OUTPUT
-          cp "$APK" "Minis-1.15-hark.apk"
-          ls -lh "Minis-1.15-hark.apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "Minis-1.15-hark.apk" \
+          cp "$APK" "Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk"
+          ls -lh "Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk" \
             | grep -E "^package:|sdkVersion|targetSdkVersion|application-label" || true
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: minis-apk
-          path: Minis-1.15-hark.apk
+          path: Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk
           retention-days: 14
 
       - name: Attach to a Release (anonymous download)
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: hark-build${{ github.run_number }}
-          name: Minis 1.15 + hark (build ${{ github.run_number }})
+          tag_name: hark-build${{ github.run_number }}-${{ steps.variant.outputs.name }}
+          name: Minis 1.15 + hark ${{ steps.variant.outputs.name }} (build ${{ github.run_number }})
           draft: false
           prerelease: true
           body: |
-            Built from `${{ github.ref_name }}` at `${{ github.sha }}`.
+            Built from `${{ github.ref_name }}` at `${{ github.sha }}`,
+            variant **${{ steps.variant.outputs.name }}**.
 
             Android-only fork build. Installable over a previous build of this
             fork without uninstalling (the signing key is pinned), but separate
             from any other Minis distribution: `applicationId com.openminis.app`,
             own data directory.
-          files: Minis-1.15-hark.apk
+          files: Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk
