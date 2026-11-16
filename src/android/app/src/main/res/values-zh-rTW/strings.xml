@@ -2512,7 +2512,15 @@
 
     <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
     <string name="onboarding_v2_headline">為解決問題的人打造的 AI</string>
-    <string name="onboarding_v2_deepseek_login">使用 DeepSeek 登入</string>
+    <string name="onboarding_v2_deepseek_login">DeepSeek 登入</string>
     <string name="onboarding_v2_or">或</string>
     <string name="onboarding_v2_i_have_api">我有 API</string>
+    <string name="onboarding_v2_api_key_title">貼上你的 DeepSeek API Key</string>
+    <string name="onboarding_v2_api_key_placeholder">sk-...</string>
+    <string name="onboarding_v2_api_key_valid">API Key 已辨識</string>
+    <string name="onboarding_v2_continue">繼續</string>
+    <string name="onboarding_v2_back">返回</string>
+    <string name="add_provider_deepseek_account">DeepSeek 帳號</string>
+    <string name="add_provider_deepseek_account_subtitle">使用 DeepSeek API，貼上你的金鑰</string>
+    <string name="add_provider_deepseek_only_footer">這一版為 DeepSeek 做了適配。同一服務商可以新增多個執行個體（例如工作與個人帳戶）。</string>
 </resources>

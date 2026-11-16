@@ -699,27 +699,21 @@ fun AppNavigation(
                         }
                     }
                 },
-                onEnterApiKey = {
+                onSubmitApiKey = { key ->
                     finishGuide()
-                    // Two steps, in this order: the list becomes the parent so
-                    // Back from the form returns to it, and the provider form is
-                    // the existing AddProviderScreen — no new screen, no new
-                    // route.
+                    // The key rides an in-memory handoff, not a route argument:
+                    // arguments land in the back stack and in saved instance
+                    // state, and neither is a place for a credential.
+                    com.openminis.app.ui.onboarding.OnboardingHandoff.offer(key)
+                    // Straight to the provider form (the "配置 OpenAI" step),
+                    // which reads the handoff and opens on DeepSeek already
+                    // filled in — no type picker, no credential picker.
                     if (navController.currentDestination?.route != Routes.SESSION_LIST) {
                         navController.navigate(Routes.SESSION_LIST) {
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     }
-                    // Two navigations in a row, and the second MUST NOT go
-                    // through safeNavigate: that helper drops the call unless
-                    // the current entry is RESUMED, and the entry it would check
-                    // is the sessions list we just navigated to — still STARTED
-                    // in this same frame. The result was a silent no-op: the
-                    // guide finished, the list appeared, and the provider form
-                    // the button promises never opened. Direct navigate() is
-                    // already the established answer for exactly this (see the
-                    // launch dispatcher's T314 note above).
-                    navController.navigate(Routes.ADD_PROVIDER)
+                    navController.navigate(Routes.ADD_PROVIDER) { launchSingleTop = true }
                 },
             )
         }

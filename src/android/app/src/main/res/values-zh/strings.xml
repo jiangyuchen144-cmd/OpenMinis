@@ -2522,7 +2522,15 @@
 
     <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
     <string name="onboarding_v2_headline">为解决问题的人打造的 AI</string>
-    <string name="onboarding_v2_deepseek_login">使用 DeepSeek 登录</string>
+    <string name="onboarding_v2_deepseek_login">DeepSeek 登录</string>
     <string name="onboarding_v2_or">或</string>
     <string name="onboarding_v2_i_have_api">我有 API</string>
+    <string name="onboarding_v2_api_key_title">粘贴你的 DeepSeek API Key</string>
+    <string name="onboarding_v2_api_key_placeholder">sk-...</string>
+    <string name="onboarding_v2_api_key_valid">API Key 已识别</string>
+    <string name="onboarding_v2_continue">继续</string>
+    <string name="onboarding_v2_back">返回</string>
+    <string name="add_provider_deepseek_account">DeepSeek 账号</string>
+    <string name="add_provider_deepseek_account_subtitle">使用 DeepSeek API，粘贴你的密钥</string>
+    <string name="add_provider_deepseek_only_footer">这一版为 DeepSeek 做了适配。同一服务商可以添加多个实例（例如工作和个人账户）。</string>
 </resources>

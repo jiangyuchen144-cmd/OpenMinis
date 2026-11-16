@@ -31,6 +31,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material3.Icon
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -63,7 +75,7 @@ import kotlin.math.sin
  */
 object OnboardingPrefs {
     private const val FILE_NAME = "onboarding_state"
-    private const val KEY_COMPLETED = "completed_v4"
+    private const val KEY_COMPLETED = "completed_v5"
 
     fun hasCompleted(context: Context): Boolean =
         runCatching {
@@ -108,20 +120,25 @@ private val MutedText = Color(0xFF7D7B74)
  *  - [onSignInWithDeepSeek] sends the user to DeepSeek's own console in a
  *    browser, so a key can be obtained where keys actually come from. It is a
  *    redirect, not a login: this build has no OAuth handshake to complete.
- *  - [onEnterApiKey] goes straight to the add-provider screen for someone who
- *    already has a key.
+ *  - The secondary pill reveals a key field on this same screen; submitting it
+ *    calls [onSubmitApiKey], and the provider form opens with that key already
+ *    in place.
  *
  * Both finish the guide on the way out — seeing the welcome screen once is the
- * whole point of it, and a user who followed either door has understood what
- * the app needs from them.
+ * whole point of it.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingGateScreen(
     onSignInWithDeepSeek: () -> Unit,
-    onEnterApiKey: () -> Unit,
+    onSubmitApiKey: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    // Two steps on one screen, so the warm-paper look carries across instead of
+    // jumping to a grey settings page for a single field.
+    var enteringKey by remember { mutableStateOf(false) }
+    var apiKey by remember { mutableStateOf("") }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -169,85 +186,261 @@ fun OnboardingGateScreen(
 
         Spacer(modifier = Modifier.weight(1.15f))
 
-        // Primary pill: solid ink. No brand mark beside the label — there is no
-        // DeepSeek artwork in the tree, and inventing one (or shipping a new
-        // bitmap for a single line of text) is worse than plain type.
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(50),
-            color = InkBlack,
-            contentColor = Color.White,
-            onClick = onSignInWithDeepSeek,
-        ) {
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.onboarding_v2_deepseek_login),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Medium,
-                    color = Color.White,
-                )
-            }
-        }
-
-        // "or" rule.
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HorizontalDivider(
-                modifier = Modifier.weight(1f),
-                thickness = 1.dp,
-                color = WarmDivider,
+        if (enteringKey) {
+            ApiKeyStep(
+                apiKey = apiKey,
+                onApiKeyChange = { apiKey = it },
+                onCancel = {
+                    enteringKey = false
+                    apiKey = ""
+                },
+                onContinue = { onSubmitApiKey(apiKey) },
             )
-            Text(
-                text = stringResource(R.string.onboarding_v2_or),
-                modifier = Modifier.padding(horizontal = 14.dp),
-                fontSize = 13.sp,
-                color = MutedText,
+        } else {
+            WelcomeButtons(
+                onSignInWithDeepSeek = onSignInWithDeepSeek,
+                onEnterApiKey = { enteringKey = true },
             )
-            HorizontalDivider(
-                modifier = Modifier.weight(1f),
-                thickness = 1.dp,
-                color = WarmDivider,
-            )
-        }
-
-        // Secondary pill: outlined on warm white. For someone who already holds
-        // a key and wants the form, not the console.
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(50),
-            color = Color.White.copy(alpha = 0.65f),
-            border = BorderStroke(1.dp, WarmBorder),
-            onClick = onEnterApiKey,
-        ) {
-            Box(
-                modifier = Modifier.fillMaxSize(),
-                contentAlignment = Alignment.Center,
-            ) {
-                Text(
-                    text = stringResource(R.string.onboarding_v2_i_have_api),
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Normal,
-                    color = MutedText,
-                )
-            }
         }
 
         Spacer(modifier = Modifier.height(28.dp))
     }
 }
 
+/**
+ * A key counts as entered once it has the prefix and enough length to be a key
+ * rather than a typo. There is deliberately no network check: that would spend
+ * a request and a spinner on a screen whose only job is to move a string
+ * somewhere else. A key that is wrong is reported by the first real request,
+ * on the form that then lets it be corrected.
+ */
+private fun looksLikeKey(key: String): Boolean {
+    val k = key.trim()
+    return k.startsWith("sk-") && k.length >= 20
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun WelcomeButtons(
+    onSignInWithDeepSeek: () -> Unit,
+    onEnterApiKey: () -> Unit,
+) {
+    // Primary pill: solid ink, DeepSeek mark + label.
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+        shape = RoundedCornerShape(50),
+        color = InkBlack,
+        contentColor = Color.White,
+        onClick = onSignInWithDeepSeek,
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            DeepSeekWhaleMark(modifier = Modifier.size(20.dp), tint = Color.White)
+            Spacer(modifier = Modifier.size(9.dp))
+            Text(
+                text = stringResource(R.string.onboarding_v2_deepseek_login),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+            )
+        }
+    }
+
+    // "or" rule.
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            thickness = 1.dp,
+            color = WarmDivider,
+        )
+        Text(
+            text = stringResource(R.string.onboarding_v2_or),
+            modifier = Modifier.padding(horizontal = 14.dp),
+            fontSize = 13.sp,
+            color = MutedText,
+        )
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            thickness = 1.dp,
+            color = WarmDivider,
+        )
+    }
+
+    // Secondary pill: outlined on warm white.
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(54.dp),
+        shape = RoundedCornerShape(50),
+        color = Color.White.copy(alpha = 0.65f),
+        border = BorderStroke(1.dp, WarmBorder),
+        onClick = onEnterApiKey,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.onboarding_v2_i_have_api),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Normal,
+                color = MutedText,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ApiKeyStep(
+    apiKey: String,
+    onApiKeyChange: (String) -> Unit,
+    onCancel: () -> Unit,
+    onContinue: () -> Unit,
+) {
+    val valid = looksLikeKey(apiKey)
+
+    Text(
+        text = stringResource(R.string.onboarding_v2_api_key_title),
+        fontSize = 15.sp,
+        fontWeight = FontWeight.Medium,
+        color = InkBlack,
+    )
+    Spacer(modifier = Modifier.height(10.dp))
+
+    // Field: warm card, hairline border that turns terracotta once the key
+    // looks complete, and the check that replaces the trailing space.
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = Color.White.copy(alpha = 0.8f),
+        border = BorderStroke(1.dp, if (valid) Terracotta else WarmBorder),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(modifier = Modifier.weight(1f)) {
+                if (apiKey.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.onboarding_v2_api_key_placeholder),
+                        fontSize = 15.sp,
+                        color = MutedText,
+                    )
+                }
+                BasicTextField(
+                    value = apiKey,
+                    onValueChange = onApiKeyChange,
+                    singleLine = true,
+                    textStyle = TextStyle(fontSize = 15.sp, color = InkBlack),
+                    keyboardOptions = KeyboardOptions(
+                        autoCorrectEnabled = false,
+                        keyboardType = KeyboardType.Password,
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            if (valid) {
+                Icon(
+                    Icons.Default.CheckCircle,
+                    contentDescription = stringResource(R.string.onboarding_v2_api_key_valid),
+                    tint = Terracotta,
+                    modifier = Modifier.size(20.dp),
+                )
+            }
+        }
+    }
+
+    Spacer(modifier = Modifier.height(16.dp))
+
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(52.dp),
+        shape = RoundedCornerShape(50),
+        color = if (valid) InkBlack else InkBlack.copy(alpha = 0.25f),
+        contentColor = Color.White,
+        enabled = valid,
+        onClick = onContinue,
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = stringResource(R.string.onboarding_v2_continue),
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Medium,
+                color = Color.White,
+            )
+        }
+    }
+
+    TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
+        Text(
+            text = stringResource(R.string.onboarding_v2_back),
+            fontSize = 14.sp,
+            color = MutedText,
+        )
+    }
+}
+
+/**
+ * The DeepSeek mark, as a whale silhouette.
+ *
+ * Drawn rather than shipped as a bitmap: it has to be tinted to whatever sits
+ * behind it (white on the ink pill) and stay crisp at 20dp, and there is no
+ * DeepSeek artwork in the tree to ship.
+ */
+@Composable
+private fun DeepSeekWhaleMark(modifier: Modifier = Modifier, tint: Color) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+
+        // Body: tail at the far left, back rising over the shoulder, nose at
+        // the right, belly returning.
+        val body = Path().apply {
+            moveTo(w * 0.04f, h * 0.52f)
+            cubicTo(w * 0.12f, h * 0.26f, w * 0.36f, h * 0.16f, w * 0.60f, h * 0.22f)
+            cubicTo(w * 0.78f, h * 0.26f, w * 0.90f, h * 0.38f, w * 0.98f, h * 0.48f)
+            cubicTo(w * 0.87f, h * 0.57f, w * 0.75f, h * 0.66f, w * 0.60f, h * 0.70f)
+            cubicTo(w * 0.36f, h * 0.78f, w * 0.13f, h * 0.72f, w * 0.04f, h * 0.52f)
+            close()
+        }
+        drawPath(body, tint)
+
+        // Tail fin: a wedge under the tail, so it reads as a whale and not a fish.
+        val fin = Path().apply {
+            moveTo(w * 0.05f, h * 0.50f)
+            cubicTo(w * 0.13f, h * 0.58f, w * 0.19f, h * 0.70f, w * 0.21f, h * 0.92f)
+            cubicTo(w * 0.12f, h * 0.80f, w * 0.06f, h * 0.68f, w * 0.05f, h * 0.50f)
+            close()
+        }
+        drawPath(fin, tint.copy(alpha = 0.85f))
+
+        // Eye: punched out in the background colour so it reads on any pill.
+        drawCircle(
+            color = InkBlack,
+            radius = w * 0.055f,
+            center = Offset(w * 0.74f, h * 0.40f),
+        )
+    }
+}
 @Composable
 private fun ClaudeStarburstIcon(modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {

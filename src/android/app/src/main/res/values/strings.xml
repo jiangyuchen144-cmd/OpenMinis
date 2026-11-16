@@ -2723,7 +2723,15 @@
 
     <!-- [T-android-onboarding-gate] First-launch guide: placeholder step. -->
     <string name="onboarding_v2_headline">AI built for people who solve problems</string>
-    <string name="onboarding_v2_deepseek_login">Sign in with DeepSeek</string>
+    <string name="onboarding_v2_deepseek_login">Continue with DeepSeek</string>
     <string name="onboarding_v2_or">or</string>
     <string name="onboarding_v2_i_have_api">I have an API key</string>
+    <string name="onboarding_v2_api_key_title">Paste your DeepSeek API key</string>
+    <string name="onboarding_v2_api_key_placeholder">sk-...</string>
+    <string name="onboarding_v2_api_key_valid">API key accepted</string>
+    <string name="onboarding_v2_continue">Continue</string>
+    <string name="onboarding_v2_back">Back</string>
+    <string name="add_provider_deepseek_account">DeepSeek account</string>
+    <string name="add_provider_deepseek_account_subtitle">Uses the DeepSeek API — paste your key</string>
+    <string name="add_provider_deepseek_only_footer">This build is set up for DeepSeek. You can add more instances of the same provider (for example a work and a personal key).</string>
 </resources>

@@ -23,17 +23,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.AltRoute
-import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Cloud
-import androidx.compose.material.icons.filled.Diamond
-import androidx.compose.material.icons.filled.FlashOn
-import androidx.compose.material.icons.filled.Hub
-import androidx.compose.material.icons.filled.Terminal
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.outlined.GraphicEq
+import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -63,7 +55,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -94,9 +85,24 @@ fun AddProviderScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
-    var step by remember { mutableStateOf(AddProviderStep.CHOOSE_TYPE) }
-    var selectedType by remember { mutableStateOf<ProviderType?>(null) }
-    var selectedCredential by remember { mutableStateOf<ProviderCredential?>(null) }
+    // [T-android-onboarding-v2] A key handed over from the welcome screen
+    // arrives here. Read once, on first composition, then cleared — so backing
+    // out and returning shows an empty form rather than resurrecting a key the
+    // user thought they had abandoned.
+    val handedOffKey = remember { com.openminis.app.ui.onboarding.OnboardingHandoff.consume() }
+    var step by remember {
+        mutableStateOf(
+            if (handedOffKey != null) AddProviderStep.CONFIGURE else AddProviderStep.CHOOSE_TYPE
+        )
+    }
+    var selectedType by remember {
+        mutableStateOf<ProviderType?>(if (handedOffKey != null) ProviderType.openAI else null)
+    }
+    var selectedCredential by remember {
+        mutableStateOf<ProviderCredential?>(
+            if (handedOffKey != null) ProviderCredential.apiKey else null
+        )
+    }
     // [T-android-provider-voice] Non-null when the flow was entered from a
     // Voice Chat Provider template row — preseeds type/base URL/label/appendV1
     // on the configure step (mirrors iOS applyVoiceTemplate).
@@ -173,46 +179,11 @@ fun AddProviderScreen(
             credentialType = selectedCredential!!,
             providerRepository = providerRepository,
             voiceTemplate = selectedVoiceTemplate,
+            prefillApiKey = handedOffKey.orEmpty(),
             onBack = handleBack,
             onSaved = onSaved,
         )
     }
-}
-
-/** Display order matching iOS. */
-private val providerDisplayOrder = listOf(
-    ProviderType.openAI,
-    ProviderType.anthropic,
-    ProviderType.gemini,
-    ProviderType.xAI,
-    ProviderType.kimiCode,
-    ProviderType.openRouter,
-)
-
-// [T-copilot-provider] Copilot is appended to `providerDisplayOrder` at the
-// call site, gated on CopilotFeatureFlag. Gating the LIST rather than the enum
-// is what makes the kill switch cheap: an instance a user already created keeps
-// decoding, rendering and running — flipping the flag off stops new sign-ups
-// without stranding anyone mid-conversation or making their saved provider
-// un-decodable.
-
-/** Icon and color per provider type, matching iOS SF Symbols. */
-private fun providerIcon(type: ProviderType): Pair<ImageVector, Color> = when (type) {
-    ProviderType.openAI -> Icons.Default.Hub to Color(0xFF4CAF50)           // green
-    ProviderType.anthropic -> Icons.Default.AutoAwesome to Color(0xFFAB47BC) // purple
-    ProviderType.gemini -> Icons.Default.Diamond to Color(0xFF42A5F5)        // blue
-    ProviderType.openRouter -> Icons.Default.AltRoute to Color(0xFF00BCD4)    // cyan
-    ProviderType.xAI -> Icons.Default.FlashOn to Color(0xFFFF7043)           // orange — Grok visual cue
-    // [T-kimi-oauth] Indigo — matches iOS's Kimi accent.
-    ProviderType.kimiCode -> Icons.Default.Terminal to Color(0xFF5C6BC0)
-    // [T-copilot-provider] GitHub purple.
-    ProviderType.githubCopilot -> Icons.Default.Terminal to Color(0xFF6E5494)
-    // [T-android-provider-type-parity] Types that arrive only from an iOS
-    // package / newer build; never offered in addableProviderTypes, but the
-    // icon helper is also used to render an already-restored instance.
-    ProviderType.openAIResponses -> Icons.Default.Hub to Color(0xFF4CAF50)
-    ProviderType.antigravity,
-    ProviderType.unsupported -> Icons.Default.Cloud to Color(0xFF9E9E9E)
 }
 
 /** Returns available credential types per provider. */
@@ -272,84 +243,26 @@ private fun ChooseProviderScreen(
         // unofficial status, and the disclaimer dialog is the gate that
         // actually matters, since it stands between the user and the first
         // request.
-        val context = LocalContext.current
-        val offeredTypes = providerDisplayOrder + ProviderType.githubCopilot
+        // [T-android-deepseek-only] One row. This build targets DeepSeek, and a
+        // list of seven protocols asks the user to choose between things they
+        // cannot all have: picking "Anthropic / Compatible API" here leads to a
+        // form whose key they do not own.
+        //
+        // The other types still exist in the codebase and in
+        // availableCredentials — they are simply not offered at creation. Put
+        // the loop back (providerDisplayOrder + githubCopilot) when more than
+        // one vendor is supported again.
         SettingsSection(
             header = stringResource(R.string.add_provider_choose_provider),
-            footer = stringResource(R.string.add_provider_you_can_add_multiple_instances_of_the_sa),
+            footer = stringResource(R.string.add_provider_deepseek_only_footer),
         ) {
-            offeredTypes.forEachIndexed { index, type ->
-                val displayTitle = when (type) {
-                    ProviderType.openAI -> "OpenAI / Compatible API"
-                    ProviderType.anthropic -> "Anthropic / Compatible API"
-                    ProviderType.gemini -> "Google Gemini"
-                    ProviderType.openRouter -> "OpenRouter"
-                    ProviderType.xAI -> "xAI (Grok)"
-                    ProviderType.kimiCode -> "Kimi Code"
-                    ProviderType.githubCopilot -> "GitHub Copilot"
-                    // [T-android-provider-type-parity] Fall back to the enum's
-                    // own display name for types this screen doesn't curate.
-                    ProviderType.openAIResponses,
-                    ProviderType.antigravity,
-                    ProviderType.unsupported -> type.displayName
-                }
-                // Describe which vendors each protocol supports, rather than a
-                // raw built-in model count.
-                val subtitleRes = when (type) {
-                    ProviderType.openAI -> R.string.add_provider_subtitle_openai
-                    ProviderType.anthropic -> R.string.add_provider_subtitle_anthropic
-                    ProviderType.gemini -> R.string.add_provider_subtitle_gemini
-                    ProviderType.openRouter -> R.string.add_provider_subtitle_openrouter
-                    ProviderType.xAI -> R.string.add_provider_subtitle_xai
-                    ProviderType.kimiCode -> R.string.add_provider_subtitle_kimi
-                    ProviderType.githubCopilot -> R.string.add_provider_subtitle_copilot
-                    // [T-android-provider-type-parity] Not offered for
-                    // creation; reuse the OpenAI copy for the Responses API and
-                    // a generic line for the undrivable types.
-                    ProviderType.openAIResponses -> R.string.add_provider_subtitle_openai
-                    ProviderType.antigravity,
-                    ProviderType.unsupported -> R.string.add_provider_subtitle_openai
-                }
-                val (icon, iconColor) = providerIcon(type)
-                SettingsRow(
-                    title = displayTitle,
-                    subtitle = stringResource(subtitleRes),
-                    icon = icon,
-                    iconColor = iconColor,
-                    onClick = { onSelect(type) },
-                    showDivider = index < offeredTypes.size - 1,
-                )
-            }
-        }
-
-        // [T-android-provider-voice] Voice Chat Providers — one row per voice
-        // vendor template. Tapping prefills the underlying protocol + base URL
-        // and jumps to configure (mirrors iOS voiceProviderSection).
-        val templates = com.openminis.app.data.model.VoiceProviderTemplate.all
-        val templateNotes = templates.mapNotNull { it.note }
-        SettingsSection(
-            header = stringResource(R.string.add_provider_voice_chat_providers),
-            footer = (
-                listOf(stringResource(R.string.add_provider_voice_templates_footer)) + templateNotes
-                ).joinToString("\n"),
-        ) {
-            templates.forEachIndexed { index, template ->
-                val capabilityRes = when (template.capability) {
-                    com.openminis.app.data.model.VoiceProviderTemplate.Capability.TTS ->
-                        R.string.add_provider_voice_capability_tts
-                    com.openminis.app.data.model.VoiceProviderTemplate.Capability.ASR ->
-                        R.string.add_provider_voice_capability_asr
-                    com.openminis.app.data.model.VoiceProviderTemplate.Capability.BOTH ->
-                        R.string.add_provider_voice_capability_both
-                }
-                SettingsRow(
-                    title = template.name,
-                    subtitle = stringResource(capabilityRes),
-                    icon = Icons.Outlined.GraphicEq,
-                    onClick = { onSelectVoiceTemplate(template) },
-                    showDivider = index < templates.size - 1,
-                )
-            }
+            SettingsRow(
+                title = stringResource(R.string.add_provider_deepseek_account),
+                subtitle = stringResource(R.string.add_provider_deepseek_account_subtitle),
+                icon = Icons.Outlined.Key,
+                onClick = { onSelect(ProviderType.openAI) },
+                showDivider = false,
+            )
         }
         Spacer(Modifier.height(24.dp))
     }
@@ -437,6 +350,9 @@ private fun ConfigureProviderScreen(
     credentialType: ProviderCredential,
     providerRepository: ProviderRepository,
     voiceTemplate: com.openminis.app.data.model.VoiceProviderTemplate? = null,
+    // [T-android-onboarding-v2] Key handed over from the welcome screen. Empty
+    // in every other entry path.
+    prefillApiKey: String = "",
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
@@ -444,7 +360,9 @@ private fun ConfigureProviderScreen(
     // A voice template preseeds its vendor name instead of the protocol name.
     val config by providerRepository.config.collectAsState()
     val defaultLabel = remember(config) {
-        val baseName = voiceTemplate?.name ?: providerType.displayName
+        val baseName = voiceTemplate?.name
+            // A handed-over key is a DeepSeek key by construction.
+            ?: if (prefillApiKey.isNotBlank()) "DeepSeek" else providerType.displayName
         val existingLabels = config.instances.map { it.label }.toSet()
         if (baseName !in existingLabels) baseName
         else {
@@ -471,8 +389,13 @@ private fun ConfigureProviderScreen(
     androidx.compose.runtime.LaunchedEffect(defaultLabel, labelEdited) {
         if (!labelEdited) label = defaultLabel
     }
-    var apiKey by remember { mutableStateOf("") }
-    var customBaseURL by remember { mutableStateOf(voiceTemplate?.baseURL ?: "") }
+    var apiKey by remember { mutableStateOf(prefillApiKey) }
+    var customBaseURL by remember {
+        mutableStateOf(
+            voiceTemplate?.baseURL
+                ?: if (prefillApiKey.isNotBlank()) "https://api.deepseek.com" else ""
+        )
+    }
 
     SettingsScaffold(
         title = stringResource(R.string.add_provider_configure_provider, providerType.displayName),
@@ -571,11 +494,24 @@ private fun ColumnScope.ApiKeyConfigSection(
                 singleLine = true,
                 visualTransformation = if (showApiKeyPlaintext) VisualTransformation.None else PasswordVisualTransformation(),
                 trailingIcon = {
-                    IconButton(onClick = { showApiKeyPlaintext = !showApiKeyPlaintext }) {
-                        Icon(
-                            if (showApiKeyPlaintext) Icons.Default.VisibilityOff else Icons.Default.Visibility,
-                            contentDescription = if (showApiKeyPlaintext) "Hide" else "Show",
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        // [T-android-onboarding-v2] The key reads as accepted
+                        // as soon as it has the shape of one — same predicate
+                        // the welcome screen uses, so the two never disagree.
+                        if (apiKey.trim().startsWith("sk-") && apiKey.trim().length >= 20) {
+                            Icon(
+                                Icons.Default.CheckCircle,
+                                contentDescription = stringResource(R.string.onboarding_v2_api_key_valid),
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        IconButton(onClick = { showApiKeyPlaintext = !showApiKeyPlaintext }) {
+                            Icon(
+                                if (showApiKeyPlaintext) Icons.Default.VisibilityOff else Icons.Default.Visibility,
+                                contentDescription = if (showApiKeyPlaintext) "Hide" else "Show",
+                            )
+                        }
                     }
                 },
             )
