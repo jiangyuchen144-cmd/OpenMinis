@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- [T-minimal] A warm off-white ground, matching the welcome screen, so
+         the launcher and the first frame agree. -->
+    <color name="ic_launcher_background">#0E1726</color>
+    <color name="navy_deep">#0B1526</color>
+    <color name="surface_light">#FAF8F5</color>
+</resources>

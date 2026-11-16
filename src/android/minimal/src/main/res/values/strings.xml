@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Minis</string>
+
+    <!-- Onboarding -->
+    <string name="ob_badge">预览版</string>
+    <string name="ob_title_1">DeepSeek</string>
+    <string name="ob_title_2">Harness</string>
+    <string name="ob_subtitle">现在，开箱即用</string>
+    <string name="ob_api_login">API 登录</string>
+    <string name="ob_key_title">粘贴你的 DeepSeek API Key</string>
+    <string name="ob_key_placeholder">sk-...</string>
+    <string name="ob_key_checking">正在验证密钥…</string>
+    <string name="ob_key_valid">API Key 已识别</string>
+    <string name="ob_key_invalid">这个密钥没有被接受</string>
+    <string name="ob_continue">继续</string>
+    <string name="ob_back">返回</string>
+
+    <!-- Sessions -->
+    <string name="sessions_title">Minis</string>
+    <string name="sessions_empty">还没有对话</string>
+    <string name="sessions_new">新对话</string>
+    <string name="sessions_delete">删除</string>
+
+    <!-- Chat -->
+    <string name="chat_placeholder">输入消息</string>
+    <string name="chat_send">发送</string>
+    <string name="chat_stop">停止</string>
+    <string name="chat_retry">重试</string>
+    <string name="chat_settings">设置</string>
+    <string name="chat_key_missing">缺少 API Key</string>
+    <string name="chat_error_network">网络错误：%1$s</string>
+    <string name="chat_error_auth">API Key 无效或已过期</string>
+    <string name="chat_error_busy">服务端繁忙，请稍后重试</string>
+
+    <!-- Settings -->
+    <string name="settings_title">设置</string>
+    <string name="settings_key">API Key</string>
+    <string name="settings_key_hint">保存在本机，不会上传到任何地方</string>
+    <string name="settings_model">模型</string>
+    <string name="settings_close">关闭</string>
+    <string name="settings_key_saved">已保存</string>
+</resources>

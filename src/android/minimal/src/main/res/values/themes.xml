@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- [T-minimal] The activity theme only needs to not flash: the first frame
+         is drawn by Compose, so everything before it should be the same navy the
+         welcome screen uses. -->
+    <style name="Theme.Minimal" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/navy_deep</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">false</item>
+    </style>
+</resources>

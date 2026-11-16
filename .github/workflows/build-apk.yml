@@ -98,59 +98,6 @@ jobs:
       #
       # `src/android/app/libs/rclone.aar` is cached alongside its source
       # because the Gradle step consumes the copy, not `deps/build/...`.
-      - name: Cache native prebuilts
-        id: cache-native
-        uses: actions/cache@v4
-        with:
-          path: |
-            deps/build/rclone/rclone.aar
-            src/android/app/libs/rclone.aar
-            src/android/app/src/main/assets/alpine-minirootfs.tar
-            src/android/app/src/main/assets/proot-aarch64
-            src/android/app/src/main/jniLibs
-          key: native-v1-${{ hashFiles('deps/**', 'scripts/prepare_android_sandbox.sh') }}
-
-      - name: Go toolchain
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.24'
-          cache: true
-          cache-dependency-path: deps/rclone-mobile/**/go.sum
-
-      - name: Native deps — proot + loaders
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        run: |
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-          bash deps/build_proot.sh
-          ls -l src/android/app/src/main/assets/proot-aarch64 || true
-          ls -l src/android/app/src/main/jniLibs/arm64-v8a/ || true
-
-      - name: Native deps — Alpine rootfs asset
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        run: |
-          bash scripts/prepare_android_sandbox.sh
-          ls -l src/android/app/src/main/assets/ | grep -iE 'alpine|rootfs' || true
-
-      - name: Native deps — rclone via gomobile
-        if: steps.cache-native.outputs.cache-hit != 'true'
-        run: |
-          export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
-          export PATH="$PATH:$(go env GOPATH)/bin"
-          go install golang.org/x/mobile/cmd/gomobile@latest
-          gomobile init
-          bash deps/build_rclone_android.sh
-          mkdir -p src/android/app/libs
-          cp deps/build/rclone/rclone.aar src/android/app/libs/
-          ls -l src/android/app/libs/
-
-      - name: Native prebuilts restored from cache
-        if: steps.cache-native.outputs.cache-hit == 'true'
-        run: |
-          echo "cache hit: skipping proot / rootfs / gomobile (≈230 s saved)"
-          ls -l src/android/app/libs/ || true
-          ls -l src/android/app/src/main/jniLibs/arm64-v8a/ || true
-
       # The release variant is signed with MINIS_SIGNING_STORE_FILE. AGP
       # GENERATES a fresh keystore when it cannot find one, and it locates the
       # file through ANDROID_USER_HOME / ANDROID_SDK_HOME when either is set,
@@ -201,14 +148,6 @@ jobs:
       # so the Gradle cache above does not cover pty_bridge / crash_handler /
       # jieba_jni. Ninja reuses the object files and only relinks when a
       # Kotlin-only change leaves the C++ inputs untouched.
-      - name: Cache CMake NDK cxx
-        uses: actions/cache@v4
-        with:
-          path: src/android/app/.cxx
-          key: cxx-v1-${{ hashFiles('src/android/app/src/main/cpp/**', 'src/android/app/build.gradle.kts') }}
-          restore-keys: |
-            cxx-v1-
-
       # Kotlin's incremental compilation state lives in `app/build/kotlin`, not
       # in ~/.gradle. Without this cache every run compiles all ~700 Kotlin
       # files from scratch, because a fresh daemon + a fresh build dir is the
@@ -231,22 +170,19 @@ jobs:
       # building: `Locate APK` takes the first match, and shipping last week's
       # binary under this week's tag is the one failure that looks like success.
       - name: Discard stale outputs from the restored build dir
-        run: rm -rf src/android/app/build/outputs/apk src/android/app/build/outputs/bundle
+        run: rm -rf src/android/app/build/outputs/apk src/android/app/build/outputs/bundle src/android/minimal/build/outputs/apk
 
       - name: Resolve variant
         id: variant
         run: |
-          V="${{ github.event.inputs.variant }}"
-          V="${V:-release}"
-          case "$V" in
-            release) CAP=GithubRelease ;;
-            perf)    CAP=GithubPerf ;;
-            *) echo "::error::unknown variant '$V'"; exit 1 ;;
-          esac
-          echo "task=:app:assemble$CAP" >> $GITHUB_OUTPUT
-          echo "dir=$V" >> $GITHUB_OUTPUT
-          echo "name=$V" >> $GITHUB_OUTPUT
-          echo "building variant $V ($CAP)"
+          # [T-minimal] One module, one variant. The minimal app has no
+          # flavours and no R8, so there is nothing for a variant switch to
+          # choose between: minification of a 3 000-line app saves a few hundred
+          # KB and costs two minutes per build.
+          echo "task=:minimal:assembleRelease" >> $GITHUB_OUTPUT
+          echo "dir=release" >> $GITHUB_OUTPUT
+          echo "name=minimal" >> $GITHUB_OUTPUT
+          echo "building :minimal:assembleRelease"
 
       # Why `release` costs ~9 min and `perf` ~4:
       #
@@ -273,8 +209,8 @@ jobs:
       - name: Locate APK
         id: apk
         run: |
-          APK=$(find src/android/app/build/outputs/apk -name '*.apk' | head -1)
-          test -n "$APK" || { echo "no APK produced"; find src/android/app/build/outputs -maxdepth 3; exit 1; }
+          APK=$(find src/android/minimal/build/outputs/apk -name '*.apk' | head -1)
+          test -n "$APK" || { echo "no APK produced"; find src/android/minimal/build/outputs -maxdepth 3; exit 1; }
           echo "path=$APK" >> $GITHUB_OUTPUT
           cp "$APK" "Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk"
           ls -lh "Minis-1.15-hark-${{ steps.variant.outputs.name }}.apk"

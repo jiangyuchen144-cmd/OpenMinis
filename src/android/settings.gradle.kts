@@ -28,4 +28,15 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "Minis"
-include(":app")
+
+// [T-minimal] Only the minimal app is built.
+//
+// `:app` is the original 165 000-line application. It stays in the tree as the
+// reference for every feature this one has not adopted yet — the markdown
+// renderer, the streaming markdown parser, the session list, the provider
+// client — but it is not compiled, because compiling something nobody ships
+// costs minutes per build and proves nothing.
+//
+// Switching back is this one line.
+include(":minimal")
+// include(":app")
