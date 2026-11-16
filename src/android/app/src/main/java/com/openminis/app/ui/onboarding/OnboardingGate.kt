@@ -64,7 +64,7 @@ import kotlin.math.sin
  */
 object OnboardingPrefs {
     private const val FILE_NAME = "onboarding_state"
-    private const val KEY_COMPLETED = "completed_v2"
+    private const val KEY_COMPLETED = "completed_v3"
 
     fun hasCompleted(context: Context): Boolean =
         runCatching {
