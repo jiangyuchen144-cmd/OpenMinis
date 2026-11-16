@@ -40,14 +40,22 @@ object KeyCheck {
             .get()
             .build()
 
-        http.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return false
-            val body = response.body?.string().orEmpty()
-            val count = runCatching {
-                json.parseToJsonElement(body)
-                    .jsonObject["data"]?.jsonArray?.size ?: 0
-            }.getOrDefault(0)
-            return count > 0
+        val result = runCatching {
+            http.newCall(request).execute().use { response ->
+                val body = response.body?.string().orEmpty()
+                val count = runCatching {
+                    json.parseToJsonElement(body)
+                        .jsonObject["data"]?.jsonArray?.size ?: 0
+                }.getOrDefault(0)
+                android.util.Log.i(
+                    "MinimalKey",
+                    "verify: keyLen=${apiKey.length} code=${response.code} models=$count " +
+                        "bodyHead=${body.take(120)}",
+                )
+                response.isSuccessful && count > 0
+            }
         }
+        result.onFailure { android.util.Log.w("MinimalKey", "verify threw", it) }
+        return result.getOrDefault(false)
     }
 }
