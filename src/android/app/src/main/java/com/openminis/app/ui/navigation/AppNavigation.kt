@@ -13,6 +13,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import com.openminis.app.deeplink.DeepLinkAction
@@ -202,6 +203,8 @@ object Routes {
     const val BACKGROUND = "background"
     const val ABOUT = "about"
     const val ONBOARDING_MODELS = "onboarding_models"
+    /** [T-android-onboarding-v2] The first-launch welcome screen. */
+    const val ONBOARDING = "onboarding"
     /** T219-2: Mount external folders settings + detail. */
     const val MOUNTED_FOLDERS = "mounted_folders"
     const val MOUNTED_FOLDERS_DETAIL = "mounted_folders_detail/{mountId}"
@@ -356,13 +359,33 @@ fun AppNavigation(
     // Set before the suspending work on purpose: every early return below
     // (deep link, pending share, mode 3 Home) is terminal for this launch, so
     // failing to clear the flag again is the correct outcome.
+    // [T-android-onboarding-v2] Decided synchronously, before the first frame,
+    // from the flag alone. The guide has to BE the start destination: any
+    // suspend-and-then-decide version shows the sessions list first, and the
+    // user asked for the guide on the very first painted frame.
+    //
+    // A real deep link still wins — the user came here to open a specific
+    // session, and a welcome screen would be in the way.
+    val hasRealDeepLink = initialDeepLink != null && initialDeepLink !is DeepLinkAction.Unknown
+    var onboardingState by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableIntStateOf(
+            if (hasRealDeepLink ||
+                !com.openminis.app.ui.onboarding.shouldShowOnboarding(context)
+            ) 2 else 1
+        )
+    }
     val initialJumpDone = androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
     }
-    LaunchedEffect(Unit) {
+    // Keyed on onboardingState, not Unit: while the guide is up the NavHost has
+    // not navigated anywhere yet, and after it finishes this effect must run
+    // again to restore "reopen my last conversation on launch". A Unit key
+    // would fire once at the guide and never again.
+    LaunchedEffect(onboardingState) {
+        if (onboardingState != 2) return@LaunchedEffect
         if (initialJumpDone.value) return@LaunchedEffect
         initialJumpDone.value = true
-        val hasDeepLink = initialDeepLink != null && initialDeepLink !is DeepLinkAction.Unknown
+        val hasDeepLink = hasRealDeepLink
         if (hasDeepLink) return@LaunchedEffect
         val hasPendingShare =
             com.openminis.app.share.ShareCoordinator.bufferVersion.value > 0
@@ -562,7 +585,7 @@ fun AppNavigation(
             Routes.chat(htmlShortcut.sessionId)
         }
         quickActionStart != null -> quickActionStart
-        else -> Routes.SESSION_LIST
+        else -> if (onboardingState == 1) Routes.ONBOARDING else Routes.SESSION_LIST
     }
     NavHost(
         navController = navController,
@@ -621,6 +644,27 @@ fun AppNavigation(
             ) + fadeOut(animationSpec = tween(200, easing = EmphasizedAccelerate))
         },
     ) {
+        // [T-android-onboarding-v2] The welcome screen. Either pill lands here,
+        // writes the flag and replaces itself with the sessions list, which is
+        // where the real setup steps live.
+        composable(Routes.ONBOARDING) {
+            com.openminis.app.ui.onboarding.OnboardingGateScreen(
+                onFinish = {
+                    com.openminis.app.ui.onboarding.OnboardingPrefs.markCompleted(context)
+                    // Changing startDestination makes NavHost rebuild its graph
+                    // and may already resettle on the list; navigating again
+                    // would then stack a second copy of it. Check first, so
+                    // either behaviour lands on one list, not two.
+                    onboardingState = 2
+                    if (navController.currentDestination?.route != Routes.SESSION_LIST) {
+                        navController.navigate(Routes.SESSION_LIST) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                    }
+                },
+            )
+        }
+
         // [T-android-tablet-split] SESSION_LIST and CHAT both render the same
         // ChatSplitScaffold; they differ only in which session it opens with.
         //

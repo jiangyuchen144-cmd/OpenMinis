@@ -2533,4 +2533,8 @@
     <string name="chat_menu_top_up_failed">没有可打开链接的应用</string>
 
     <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
+    <string name="onboarding_v2_headline">为解决问题的人打造的 AI</string>
+    <string name="onboarding_v2_continue_google">使用 Google 继续</string>
+    <string name="onboarding_v2_or">或</string>
+    <string name="onboarding_v2_enter_email">输入您的电子邮箱</string>
 </resources>

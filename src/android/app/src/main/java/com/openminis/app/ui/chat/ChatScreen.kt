@@ -294,6 +294,7 @@ import com.openminis.app.ui.components.MinisIcons
 import com.openminis.app.ui.components.MinisMenu
 import com.openminis.app.ui.components.MinisTextButton
 import com.openminis.app.ui.components.safeLaunchPicker
+import com.openminis.app.ui.quota.rememberQuotaStrings
 import com.openminis.app.ui.settings.SettingsSwitch
 import com.openminis.app.ui.theme.ChatColors
 import java.io.File
@@ -3178,6 +3179,11 @@ fun ChatScreen(
                         MinisMenu(
                             expanded = showChatMenu,
                             onDismissRequest = { showChatMenu = false },
+                            // [T-android-menu-radical] One line of 13sp text
+                            // does not want a 180dp card, and 20dp corners on
+                            // a single row read as a pill rather than a menu.
+                            minWidth = 0.dp,
+                            shape = RoundedCornerShape(10.dp),
                         ) {
                             // [T-android-menu-radical] The ⋮ menu holds exactly
                             // one thing: the balance row. Everything else it used to
@@ -3214,6 +3220,7 @@ fun ChatScreen(
                                     val quotaState by QuotaStore.state.collectAsState()
                                     val scope = rememberCoroutineScope()
                                     val context = LocalContext.current
+                                    val quotaStrings = rememberQuotaStrings()
                                     // customBaseURL, not the type: a custom
                                     // OpenAI-compatible endpoint IS type openAI,
                                     // so DeepSeek and Zhipu would both match
@@ -3234,9 +3241,24 @@ fun ChatScreen(
                                         LaunchedEffect(inst.id) {
                                             QuotaStore.refreshIfDue(inst.id, "chat_menu")
                                         }
+                                        // Same quota model as the badge it
+                                        // replaces, but as plain text: the row
+                                        // is one line now, so the figure cannot
+                                        // sit in a tinted capsule.
+                                        val balanceText = quotaState.headline(inst.id)
+                                            ?.let { (pool, status) ->
+                                                com.openminis.app.quota.QuotaPickerHintRules
+                                                    .headerText(
+                                                        pool,
+                                                        status,
+                                                        com.openminis.app.ui.quota.currentLocale(),
+                                                        quotaStrings,
+                                                    )
+                                            } ?: "—"
                                         ChatBalanceMenuItem(
                                             a11yLabel = stringResource(R.string.chat_menu_balance),
                                             refreshing = quotaState.isRefreshing(inst.id),
+                                            balanceText = balanceText,
                                             topUpText = topUpUrl?.let {
                                                 stringResource(R.string.chat_menu_top_up)
                                             },
@@ -3259,28 +3281,6 @@ fun ChatScreen(
                                                         context.getString(R.string.chat_menu_top_up_failed),
                                                         Toast.LENGTH_SHORT,
                                                     ).show()
-                                                }
-                                            },
-                                            leadingIcon = {
-                                                Icon(
-                                                    Icons.Outlined.AccountBalanceWallet,
-                                                    contentDescription = null,
-                                                )
-                                            },
-                                            balanceContent = {
-                                                // The project's own badge: it resolves
-                                                // the headline pool, formats the figure
-                                                // and colours it by status.
-                                                if (quotaState.headline(inst.id) != null) {
-                                                    com.openminis.app.ui.quota.QuotaSectionHeaderBadge(
-                                                        instanceId = inst.id,
-                                                        onTap = null,
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        "—",
-                                                        style = MaterialTheme.typography.bodyLarge,
-                                                    )
                                                 }
                                             },
                                         )
