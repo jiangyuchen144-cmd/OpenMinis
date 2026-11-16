@@ -103,6 +103,12 @@ fun AddProviderScreen(
             if (handedOffKey != null) ProviderCredential.apiKey else null
         )
     }
+    // [T-android-deepseek-only] Which vendor the entry point named, so the form
+    // opens showing it instead of the generic protocol name. Null means "the
+    // user picked a protocol" and the form keeps its old defaults.
+    var presetVendorLabel by remember {
+        mutableStateOf(if (handedOffKey != null) "DeepSeek" else null)
+    }
     // [T-android-provider-voice] Non-null when the flow was entered from a
     // Voice Chat Provider template row — preseeds type/base URL/label/appendV1
     // on the configure step (mirrors iOS applyVoiceTemplate).
@@ -146,9 +152,10 @@ fun AddProviderScreen(
     when (step) {
         AddProviderStep.CHOOSE_TYPE -> ChooseProviderScreen(
             onBack = handleBack,
-            onSelectCredential = { type, credential ->
+            onSelectCredential = { type, credential, vendorLabel ->
                 selectedType = type
                 selectedCredential = credential
+                presetVendorLabel = vendorLabel
                 step = AddProviderStep.CONFIGURE
             },
             onSelect = { type ->
@@ -185,6 +192,7 @@ fun AddProviderScreen(
             providerRepository = providerRepository,
             voiceTemplate = selectedVoiceTemplate,
             prefillApiKey = handedOffKey.orEmpty(),
+            presetVendorLabel = presetVendorLabel,
             onBack = handleBack,
             onSaved = onSaved,
         )
@@ -230,7 +238,7 @@ private fun ChooseProviderScreen(
     // [T-android-deepseek-only] Jump straight to the form with a credential
     // already chosen, skipping the credential picker. Used by the one DeepSeek
     // row: its only sane credential is an API key.
-    onSelectCredential: (ProviderType, ProviderCredential) -> Unit,
+    onSelectCredential: (ProviderType, ProviderCredential, String?) -> Unit,
     onSelectVoiceTemplate: (com.openminis.app.data.model.VoiceProviderTemplate) -> Unit = {},
 ) {
     SettingsScaffold(
@@ -275,7 +283,7 @@ private fun ChooseProviderScreen(
                     // with OpenAI Codex", which is the OpenAI flow: it has
                     // nothing to do with DeepSeek and would only invite the user
                     // down a path that cannot work here.
-                    onSelectCredential(ProviderType.openAI, ProviderCredential.apiKey)
+                    onSelectCredential(ProviderType.openAI, ProviderCredential.apiKey, "DeepSeek")
                 },
                 showDivider = false,
             )
@@ -369,6 +377,8 @@ private fun ConfigureProviderScreen(
     // [T-android-onboarding-v2] Key handed over from the welcome screen. Empty
     // in every other entry path.
     prefillApiKey: String = "",
+    // [T-android-deepseek-only] Vendor named by the entry point, if any.
+    presetVendorLabel: String? = null,
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
@@ -377,8 +387,9 @@ private fun ConfigureProviderScreen(
     val config by providerRepository.config.collectAsState()
     val defaultLabel = remember(config) {
         val baseName = voiceTemplate?.name
-            // A handed-over key is a DeepSeek key by construction.
-            ?: if (prefillApiKey.isNotBlank()) "DeepSeek" else providerType.displayName
+            // A handed-over key, or a named entry point, pins the vendor.
+            ?: presetVendorLabel
+            ?: providerType.displayName
         val existingLabels = config.instances.map { it.label }.toSet()
         if (baseName !in existingLabels) baseName
         else {
@@ -409,7 +420,8 @@ private fun ConfigureProviderScreen(
     var customBaseURL by remember {
         mutableStateOf(
             voiceTemplate?.baseURL
-                ?: if (prefillApiKey.isNotBlank()) "https://api.deepseek.com" else ""
+                ?: com.openminis.app.data.model.ProviderAutoConfig
+                    .baseUrlForLabel(presetVendorLabel).orEmpty()
         )
     }
 
