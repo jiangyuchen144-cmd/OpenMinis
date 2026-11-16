@@ -68,6 +68,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -446,6 +447,10 @@ private fun ApiInlinePanel(
                     singleLine = true,
                     textStyle = TextStyle(fontSize = 15.sp, color = GlassWhite),
                     cursorBrush = Brush.verticalGradient(listOf(WhaleBlue, WhaleBlue)),
+                    // KeyboardType only picks the keyboard; it does not mask
+                    // anything. Without this the key was shown in full on
+                    // screen, which is not what a password field means.
+                    visualTransformation = PasswordVisualTransformation(),
                     keyboardOptions = KeyboardOptions(
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Password,
