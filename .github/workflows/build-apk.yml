@@ -130,6 +130,10 @@ jobs:
           keytool -exportcert -keystore "$HOME/.android/debug.keystore" \
             -storepass android -alias androiddebugkey \
             | keytool -printcert | grep SHA256
+          # AGP's built-in debug config does not reliably resolve to the file
+          # above on a runner (three builds, three different digests). Point the
+          # build at this exact file instead of letting it guess.
+          echo "MINIS_SIGNING_STORE_FILE=$HOME/.android/debug.keystore" >> $GITHUB_ENV
 
       - name: Gradle assembleRelease
         working-directory: src/android

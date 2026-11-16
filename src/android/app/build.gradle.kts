@@ -24,6 +24,31 @@ fun customizationValue(key: String): String =
 
 android {
     namespace = "com.openminis.app"
+
+    // [T-android-ci-signing] A CI build must share ONE signing identity across
+    // runs, or build N+1 cannot be installed over build N (INSTALL_FAILED_
+    // UPDATE_INCOMPATIBLE) and every test build wipes the previous one's data.
+    //
+    // AGP's built-in "debug" signingConfig resolves its keystore through
+    // ANDROID_USER_HOME / ANDROID_SDK_HOME / $HOME, and on a CI runner it
+    // silently GENERATES a fresh key when it doesn't find one where it looked —
+    // writing the file to $HOME/.android was not enough (verified: three builds
+    // produced three different certificate digests while the file was in place).
+    //
+    // So when MINIS_SIGNING_STORE_FILE is set, use that file explicitly instead
+    // of letting AGP guess. Unset locally, which keeps normal developer builds
+    // on the standard debug keystore.
+    signingConfigs {
+        val explicitStore = System.getenv("MINIS_SIGNING_STORE_FILE")
+        if (!explicitStore.isNullOrBlank()) {
+            create("ciFixed") {
+                storeFile = file(explicitStore)
+                storePassword = "android"
+                keyAlias = "androiddebugkey"
+                keyPassword = "android"
+            }
+        }
+    }
     // [T-android-dynamic-island] Bumped 35→36 so the Android 16 (Baklava)
     // Live Updates APIs — Notification.ProgressStyle, FLAG_PROMOTED_ONGOING,
     // NotificationManager.canPostPromotedNotifications(), setShortCriticalText —
@@ -104,7 +129,11 @@ android {
             isProfileable = true
             matchingFallbacks += listOf("debug")
             buildConfigField("boolean", "DEV_TOOLS", "true")
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (!System.getenv("MINIS_SIGNING_STORE_FILE").isNullOrBlank())
+                    signingConfigs.getByName("ciFixed")
+                else
+                    signingConfigs.getByName("debug")
         }
         release {
             // [OpenMinis#363] Produce native-debug-symbols.zip alongside the
@@ -126,7 +155,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig =
+                if (!System.getenv("MINIS_SIGNING_STORE_FILE").isNullOrBlank())
+                    signingConfigs.getByName("ciFixed")
+                else
+                    signingConfigs.getByName("debug")
         }
     }
 
