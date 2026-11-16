@@ -710,7 +710,16 @@ fun AppNavigation(
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     }
-                    navController.safeNavigate(Routes.ADD_PROVIDER)
+                    // Two navigations in a row, and the second MUST NOT go
+                    // through safeNavigate: that helper drops the call unless
+                    // the current entry is RESUMED, and the entry it would check
+                    // is the sessions list we just navigated to — still STARTED
+                    // in this same frame. The result was a silent no-op: the
+                    // guide finished, the list appeared, and the provider form
+                    // the button promises never opened. Direct navigate() is
+                    // already the established answer for exactly this (see the
+                    // launch dispatcher's T314 note above).
+                    navController.navigate(Routes.ADD_PROVIDER)
                 },
             )
         }
