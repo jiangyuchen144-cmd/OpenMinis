@@ -84,6 +84,28 @@ jobs:
           cp deps/build/rclone/rclone.aar src/android/app/libs/
           ls -l src/android/app/libs/
 
+      # The release variant is signed with the project's own "debug"
+      # signingConfig, which reads ~/.android/debug.keystore. AGP GENERATES that
+      # file when it is missing, with a fresh key — so without this step every
+      # run produced an APK with a different signing identity, and installing
+      # run N+1 over run N failed with INSTALL_FAILED_UPDATE_INCOMPATIBLE. A
+      # fixed keystore makes successive builds upgrade-in-place.
+      #
+      # Kept in a repository secret rather than committed: a debug key is not a
+      # credential, but a public one would let anyone sign an APK that this
+      # fork's users could install over a real build.
+      - name: Restore stable debug keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::DEBUG_KEYSTORE_B64 secret is missing; builds would not share a signing identity"
+            exit 1
+          fi
+          mkdir -p "$HOME/.android"
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
+          ls -l "$HOME/.android/debug.keystore"
+
       - name: Gradle assembleRelease
         working-directory: src/android
         run: |
