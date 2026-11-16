@@ -1,17 +1,30 @@
 package com.openminis.app.ui.onboarding
 
-// [T-android-onboarding-v2] First-launch welcome, in the warm-paper style the
-// user asked for: cream ground, terracotta starburst wordmark, a hand-drawn
-// hero illustration, serif headline, and two pills at the bottom.
+// [T-android-onboarding-deepseek] The welcome screen, in DeepSeek Harness's own
+// visual language: a deep navy ground that drifts, an overline badge, two lines
+// of display type, and two ways in.
 //
-// Both buttons finish the flow. Neither performs an authentication — see the
-// header on [OnboardingGateScreen] for why that is deliberate rather than an
-// oversight.
+// One screen, two states. "API 登录" does NOT push another page — the field
+// appears in place and the pill underneath becomes the confirm control. That is
+// why the previous separate key screen is gone: it was a second full-page
+// surface for a single text field, and it lost the background with it.
 
 import android.content.Context
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,58 +37,58 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.WarningAmber
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.openminis.app.R
-import kotlin.math.cos
-import kotlin.math.sin
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
- * [T-android-onboarding-v2] The completed flag.
+ * [T-android-onboarding-deepseek] The completed flag.
  *
  * Its own SharedPreferences file, deliberately not the appearance prefs: those
  * are cosmetic settings a user may reset or restore from a backup, and this
  * flag must not travel with them.
  *
- * The key is versioned. `completed_v2` rather than the old `onboarding_done`:
- * the v1 flag was written by a screen that has since been removed, so any
- * device that saw it would otherwise skip the new guide and never see it.
- * Bumping the key re-asks once, for everyone, without needing a migration.
+ * The key is versioned, and is bumped whenever the screen is replaced rather
+ * than adjusted. Any device that answered the previous screen has answered a
+ * different question.
  */
 object OnboardingPrefs {
     private const val FILE_NAME = "onboarding_state"
-    private const val KEY_COMPLETED = "completed_v5"
+    private const val KEY_COMPLETED = "completed_v6"
 
     fun hasCompleted(context: Context): Boolean =
         runCatching {
@@ -94,239 +107,324 @@ object OnboardingPrefs {
 }
 
 /**
- * [T-android-onboarding-v2] Whether to show the guide.
+ * [T-android-onboarding-deepseek] Whether to show the welcome screen.
  *
- * Reads the flag only. It deliberately does NOT wait for the provider config
- * and does not consult the instance list: the decision has to be available
- * synchronously, before the first frame, or the guide cannot be the start
- * destination and the user sees the sessions list flash first. That also means
- * an existing user who upgrades sees the guide once — which is the intended
- * behaviour here, and why the flag is versioned.
+ * Reads the flag only, synchronously, because the answer decides the navigation
+ * graph's start destination before the first frame.
  */
 fun shouldShowOnboarding(context: Context): Boolean =
     !OnboardingPrefs.hasCompleted(context)
 
-private val CreamBg = Color(0xFFFAF8F5)
-private val InkBlack = Color(0xFF141413)
-private val Terracotta = Color(0xFFD97757)
-private val WarmBorder = Color(0xFFDEDCD3)
-private val WarmDivider = Color(0xFFE5E3DA)
-private val MutedText = Color(0xFF7D7B74)
+// ─── Palette ────────────────────────────────────────────────────────────────
+private val NavyDeep = Color(0xFF0B1526)
+private val NavyMid = Color(0xFF152A4A)
+private val NavyHigh = Color(0xFF1E4270)
+private val GlassWhite = Color(0xFFFFFFFF)
+private val HintBlue = Color(0xFF9FB6D4)
+private val WhaleBlue = Color(0xFF4A9EFF)
+private val OkGreen = Color(0xFF2FBF71)
+private val ErrorRed = Color(0xFFE0674F)
+
+/** How long the green check holds before it becomes the arrow. */
+private const val CHECK_HOLD_MS = 700L
 
 /**
- * [T-android-onboarding-v2] The welcome screen.
+ * The key is checked against the vendor, not against its shape.
  *
- * Two doors out, and neither one authenticates anything by itself:
- *  - [onSignInWithDeepSeek] sends the user to DeepSeek's own console in a
- *    browser, so a key can be obtained where keys actually come from. It is a
- *    redirect, not a login: this build has no OAuth handshake to complete.
- *  - The secondary pill reveals a key field on this same screen; submitting it
- *    calls [onSubmitApiKey], and the provider form opens with that key already
- *    in place.
+ * "Looks like a key" was the previous rule and it is not the same question: a
+ * well-formed string that DeepSeek rejects would have walked the user into a
+ * provider that cannot answer. One GET to the models endpoint is cheap, runs
+ * while they are still looking at the field, and answers the question they
+ * actually have.
  *
- * Both finish the guide on the way out — seeing the welcome screen once is the
- * whole point of it.
+ * Returns true only when the endpoint answered with a model list. Every other
+ * outcome — timeout, HTTP error, malformed body, no network — is a false, with
+ * no attempt to guess which.
  */
+private suspend fun validateDeepSeekKey(key: String): Boolean {
+    if (key.length < 8) return false
+    return withTimeoutOrNull(15_000) {
+        runCatching {
+            val r = com.openminis.app.provider.openai.OpenAIModelsApi.fetchModelsDetailed(
+                apiKey = key,
+                baseURL = DEEPSEEK_API_BASE,
+                // No context: the cache is keyed by key + base and a hit would
+                // answer from a previous session's result instead of asking.
+                context = null,
+                forceRefresh = true,
+            )
+            r.error == null && r.models.isNotEmpty()
+        }.getOrDefault(false)
+    } ?: false
+}
+
+private const val DEEPSEEK_API_BASE = "https://api.deepseek.com"
+
+private enum class KeyState { Idle, Checking, Ok, Bad }
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingGateScreen(
     onSignInWithDeepSeek: () -> Unit,
-    onSubmitApiKey: (String) -> Unit,
+    onApiVerified: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Two steps on one screen, so the warm-paper look carries across instead of
-    // jumping to a grey settings page for a single field.
-    var enteringKey by remember { mutableStateOf(false) }
+    var apiOpen by remember { mutableStateOf(false) }
     var apiKey by remember { mutableStateOf("") }
+    var keyState by remember { mutableStateOf(KeyState.Idle) }
+    // The pill holds a green check for a beat before it becomes the arrow, so
+    // the success is seen rather than inferred from a button changing shape.
+    var showArrow by remember { mutableStateOf(false) }
 
-    Column(
+    // Debounced validation: typing produces one request per pause, and a new
+    // keystroke cancels the in-flight one by restarting this effect.
+    LaunchedEffect(apiKey, apiOpen) {
+        if (!apiOpen) return@LaunchedEffect
+        showArrow = false
+        if (apiKey.isBlank()) {
+            keyState = KeyState.Idle
+            return@LaunchedEffect
+        }
+        keyState = KeyState.Checking
+        delay(450)
+        val ok = validateDeepSeekKey(apiKey.trim())
+        keyState = if (ok) KeyState.Ok else KeyState.Bad
+        if (ok) {
+            delay(CHECK_HOLD_MS)
+            showArrow = true
+        }
+    }
+
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CreamBg)
-            .windowInsetsPadding(WindowInsets.systemBars)
-            .padding(horizontal = 24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
+            .background(NavyDeep),
     ) {
-        Spacer(modifier = Modifier.height(28.dp))
+        FlowingNavyBackdrop()
 
-        // Brand row: starburst + serif wordmark.
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.systemBars)
+                .padding(horizontal = 28.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            ClaudeStarburstIcon(modifier = Modifier.size(28.dp))
+            Spacer(Modifier.height(40.dp))
+
+            // Overline: a small four-point sparkle and the preview label.
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                SparkleMark(Modifier.size(13.dp), HintBlue)
+                Text(
+                    text = stringResource(R.string.onboarding_v3_badge),
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = HintBlue,
+                    letterSpacing = 0.4.sp,
+                )
+            }
+
+            Spacer(Modifier.weight(0.9f))
+
+            WhaleMark(
+                modifier = Modifier.size(88.dp),
+                tint = GlassWhite,
+            )
+
+            Spacer(Modifier.height(26.dp))
+
             Text(
-                text = "Minis",
-                fontFamily = FontFamily.Serif,
+                text = stringResource(R.string.onboarding_v3_title_1),
+                fontSize = 40.sp,
+                lineHeight = 44.sp,
                 fontWeight = FontWeight.SemiBold,
-                fontSize = 28.sp,
-                color = InkBlack,
+                color = GlassWhite,
+                textAlign = TextAlign.Center,
                 letterSpacing = (-0.5).sp,
             )
-        }
-
-        Spacer(modifier = Modifier.weight(0.85f))
-
-        ClaudeHeroIllustration(
-            modifier = Modifier.size(width = 240.dp, height = 220.dp),
-        )
-
-        Spacer(modifier = Modifier.height(28.dp))
-
-        Text(
-            text = stringResource(R.string.onboarding_v2_headline),
-            fontFamily = FontFamily.Serif,
-            fontWeight = FontWeight.Normal,
-            fontSize = 26.sp,
-            lineHeight = 34.sp,
-            color = InkBlack,
-            textAlign = TextAlign.Center,
-            letterSpacing = 0.3.sp,
-        )
-
-        Spacer(modifier = Modifier.weight(1.15f))
-
-        if (enteringKey) {
-            ApiKeyStep(
-                apiKey = apiKey,
-                onApiKeyChange = { apiKey = it },
-                onCancel = {
-                    enteringKey = false
-                    apiKey = ""
-                },
-                onContinue = { onSubmitApiKey(apiKey) },
+            Text(
+                text = stringResource(R.string.onboarding_v3_title_2),
+                fontSize = 40.sp,
+                lineHeight = 44.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = GlassWhite,
+                textAlign = TextAlign.Center,
+                letterSpacing = (-0.5).sp,
             )
-        } else {
-            WelcomeButtons(
-                onSignInWithDeepSeek = onSignInWithDeepSeek,
-                onEnterApiKey = { enteringKey = true },
-            )
-        }
 
-        Spacer(modifier = Modifier.height(28.dp))
+            Spacer(Modifier.height(14.dp))
+
+            Text(
+                text = stringResource(R.string.onboarding_v3_subtitle),
+                fontSize = 26.sp,
+                lineHeight = 34.sp,
+                fontWeight = FontWeight.Medium,
+                color = GlassWhite,
+                textAlign = TextAlign.Center,
+            )
+
+            Spacer(Modifier.weight(1.1f))
+
+            if (apiOpen) {
+                ApiInlinePanel(
+                    apiKey = apiKey,
+                    onApiKeyChange = { apiKey = it },
+                    keyState = keyState,
+                    showArrow = showArrow,
+                    onBack = {
+                        apiOpen = false
+                        apiKey = ""
+                        keyState = KeyState.Idle
+                        showArrow = false
+                    },
+                    onConfirm = { onApiVerified(apiKey.trim()) },
+                )
+            } else {
+                WelcomeButtons(
+                    onSignInWithDeepSeek = onSignInWithDeepSeek,
+                    onApiLogin = { apiOpen = true },
+                )
+            }
+
+            Spacer(Modifier.height(30.dp))
+        }
     }
 }
 
 /**
- * A key counts as entered once it has the prefix and enough length to be a key
- * rather than a typo. There is deliberately no network check: that would spend
- * a request and a spinner on a screen whose only job is to move a string
- * somewhere else. A key that is wrong is reported by the first real request,
- * on the form that then lets it be corrected.
+ * The ground: two slow, out-of-phase radial washes over the navy base. Drawn on
+ * a Canvas driven by one infinite float, so it costs one value read per frame
+ * and never re-lays-out.
  */
-private fun looksLikeKey(key: String): Boolean {
-    val k = key.trim()
-    return k.startsWith("sk-") && k.length >= 20
+@Composable
+private fun FlowingNavyBackdrop() {
+    val transition = rememberInfiniteTransition(label = "onboardingBackdrop")
+    val t by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 14_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "backdropPhase",
+    )
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        // Base wash, drifting diagonally.
+        drawRect(
+            brush = Brush.linearGradient(
+                colors = listOf(NavyDeep, NavyMid, NavyHigh, NavyMid),
+                start = Offset(-size.width * 0.3f + size.width * 0.6f * t, 0f),
+                end = Offset(size.width * 1.1f + size.width * 0.6f * t, size.height),
+            ),
+        )
+        // A soft highlight that breathes, so the surface reads as moving rather
+        // than merely tinted.
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(NavyHigh.copy(alpha = 0.55f), Color.Transparent),
+                center = Offset(size.width * (0.18f + 0.64f * t), size.height * 0.30f),
+                radius = size.width * 0.85f,
+            ),
+            radius = size.width * 0.85f,
+            center = Offset(size.width * (0.18f + 0.64f * t), size.height * 0.30f),
+        )
+        drawCircle(
+            brush = Brush.radialGradient(
+                colors = listOf(WhaleBlue.copy(alpha = 0.16f), Color.Transparent),
+                center = Offset(size.width * (0.85f - 0.55f * t), size.height * 0.78f),
+                radius = size.width * 0.7f,
+            ),
+            radius = size.width * 0.7f,
+            center = Offset(size.width * (0.85f - 0.55f * t), size.height * 0.78f),
+        )
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun WelcomeButtons(
     onSignInWithDeepSeek: () -> Unit,
-    onEnterApiKey: () -> Unit,
+    onApiLogin: () -> Unit,
 ) {
-    // Primary pill: solid ink, DeepSeek mark + label.
+    // Primary: the DeepSeek door, carrying a flowing blue gradient rather than
+    // the flat black pill it used to be — on a navy ground a black pill reads
+    // as a hole.
+    FlowGradientPill(
+        onClick = onSignInWithDeepSeek,
+        height = 56.dp,
+    ) {
+        WhaleMark(Modifier.size(20.dp), GlassWhite)
+        Spacer(Modifier.width(9.dp))
+        Text(
+            text = stringResource(R.string.onboarding_v2_deepseek_login),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = GlassWhite,
+        )
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // Secondary: API sign-in. Ghost outline, so the pair reads as
+    // "recommended" and "I already have one" without a second filled button.
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(54.dp),
+            .height(56.dp),
         shape = RoundedCornerShape(50),
-        color = InkBlack,
-        contentColor = Color.White,
-        onClick = onSignInWithDeepSeek,
+        color = Color.White.copy(alpha = 0.06f),
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f)),
+        onClick = onApiLogin,
     ) {
-        Row(
-            modifier = Modifier.fillMaxSize(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center,
-        ) {
-            DeepSeekWhaleMark(modifier = Modifier.size(20.dp), tint = Color.White)
-            Spacer(modifier = Modifier.size(9.dp))
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text(
-                text = stringResource(R.string.onboarding_v2_deepseek_login),
+                text = stringResource(R.string.onboarding_v3_api_login),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Medium,
-                color = Color.White,
-            )
-        }
-    }
-
-    // "or" rule.
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            thickness = 1.dp,
-            color = WarmDivider,
-        )
-        Text(
-            text = stringResource(R.string.onboarding_v2_or),
-            modifier = Modifier.padding(horizontal = 14.dp),
-            fontSize = 13.sp,
-            color = MutedText,
-        )
-        HorizontalDivider(
-            modifier = Modifier.weight(1f),
-            thickness = 1.dp,
-            color = WarmDivider,
-        )
-    }
-
-    // Secondary pill: outlined on warm white.
-    Surface(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(54.dp),
-        shape = RoundedCornerShape(50),
-        color = Color.White.copy(alpha = 0.65f),
-        border = BorderStroke(1.dp, WarmBorder),
-        onClick = onEnterApiKey,
-    ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.onboarding_v2_i_have_api),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Normal,
-                color = MutedText,
+                color = GlassWhite.copy(alpha = 0.92f),
             )
         }
     }
 }
 
+/**
+ * The inline key field and its confirm pill.
+ *
+ * The pill is the status surface: dim while the key is unusable, a green check
+ * for a beat once the vendor accepts it, then an arrow that acts. There is no
+ * separate confirmation screen because there is nothing else to confirm — the
+ * field and the action are one thought.
+ */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ApiKeyStep(
+private fun ApiInlinePanel(
     apiKey: String,
     onApiKeyChange: (String) -> Unit,
-    onCancel: () -> Unit,
-    onContinue: () -> Unit,
+    keyState: KeyState,
+    showArrow: Boolean,
+    onBack: () -> Unit,
+    onConfirm: () -> Unit,
 ) {
-    val valid = looksLikeKey(apiKey)
+    val verified = keyState == KeyState.Ok
 
-    Text(
-        text = stringResource(R.string.onboarding_v2_api_key_title),
-        fontSize = 15.sp,
-        fontWeight = FontWeight.Medium,
-        color = InkBlack,
-    )
-    Spacer(modifier = Modifier.height(10.dp))
-
-    // Field: warm card, hairline border that turns terracotta once the key
-    // looks complete, and the check that replaces the trailing space.
+    // Field.
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(54.dp),
         shape = RoundedCornerShape(14.dp),
-        color = Color.White.copy(alpha = 0.8f),
-        border = BorderStroke(1.dp, if (valid) Terracotta else WarmBorder),
+        color = Color.White.copy(alpha = 0.07f),
+        border = BorderStroke(
+            1.dp,
+            when (keyState) {
+                KeyState.Ok -> OkGreen.copy(alpha = 0.8f)
+                KeyState.Bad -> ErrorRed.copy(alpha = 0.8f)
+                KeyState.Checking -> WhaleBlue.copy(alpha = 0.6f)
+                KeyState.Idle -> Color.White.copy(alpha = 0.18f)
+            },
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -334,19 +432,20 @@ private fun ApiKeyStep(
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Box(modifier = Modifier.weight(1f)) {
+            Box(Modifier.weight(1f)) {
                 if (apiKey.isEmpty()) {
                     Text(
                         text = stringResource(R.string.onboarding_v2_api_key_placeholder),
                         fontSize = 15.sp,
-                        color = MutedText,
+                        color = HintBlue.copy(alpha = 0.65f),
                     )
                 }
                 BasicTextField(
                     value = apiKey,
                     onValueChange = onApiKeyChange,
                     singleLine = true,
-                    textStyle = TextStyle(fontSize = 15.sp, color = InkBlack),
+                    textStyle = TextStyle(fontSize = 15.sp, color = GlassWhite),
+                    cursorBrush = Brush.verticalGradient(listOf(WhaleBlue, WhaleBlue)),
                     keyboardOptions = KeyboardOptions(
                         autoCorrectEnabled = false,
                         keyboardType = KeyboardType.Password,
@@ -354,181 +453,259 @@ private fun ApiKeyStep(
                     modifier = Modifier.fillMaxWidth(),
                 )
             }
-            if (valid) {
-                Icon(
-                    Icons.Default.CheckCircle,
-                    contentDescription = stringResource(R.string.onboarding_v2_api_key_valid),
-                    tint = Terracotta,
-                    modifier = Modifier.size(20.dp),
+            // Trailing status: a turning ring while the vendor is being asked,
+            // a check once it answers yes, a warning when it says no.
+            when (keyState) {
+                KeyState.Checking -> CircularProgressIndicator(
+                    modifier = Modifier.size(16.dp),
+                    strokeWidth = 1.8.dp,
+                    color = WhaleBlue,
                 )
+                KeyState.Ok -> Icon(
+                    Icons.Default.Check,
+                    contentDescription = stringResource(R.string.onboarding_v2_api_key_valid),
+                    tint = OkGreen,
+                    modifier = Modifier.size(18.dp),
+                )
+                KeyState.Bad -> Icon(
+                    Icons.Default.WarningAmber,
+                    contentDescription = stringResource(R.string.onboarding_v3_api_invalid),
+                    tint = ErrorRed,
+                    modifier = Modifier.size(16.dp),
+                )
+                KeyState.Idle -> Unit
             }
         }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    Spacer(Modifier.height(10.dp))
 
+    // A one-line verdict, only when there is something to say.
+    val verdict = when (keyState) {
+        KeyState.Checking -> stringResource(R.string.onboarding_v3_api_checking)
+        KeyState.Bad -> stringResource(R.string.onboarding_v3_api_invalid)
+        else -> null
+    }
+    if (verdict != null) {
+        Text(
+            text = verdict,
+            fontSize = 12.sp,
+            color = if (keyState == KeyState.Bad) ErrorRed else HintBlue,
+        )
+        Spacer(Modifier.height(6.dp))
+    }
+
+    Spacer(Modifier.height(12.dp))
+
+    // Confirm pill: three faces, one surface.
+    val pillColor = when {
+        verified -> OkGreen
+        else -> Color.White.copy(alpha = 0.12f)
+    }
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .height(52.dp),
+            .height(56.dp),
         shape = RoundedCornerShape(50),
-        color = if (valid) InkBlack else InkBlack.copy(alpha = 0.25f),
-        contentColor = Color.White,
-        enabled = valid,
-        onClick = onContinue,
+        color = pillColor,
+        enabled = verified,
+        onClick = { if (showArrow) onConfirm() },
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = stringResource(R.string.onboarding_v2_continue),
-                fontSize = 16.sp,
-                fontWeight = FontWeight.Medium,
-                color = Color.White,
-            )
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            AnimatedContent(
+                targetState = when {
+                    !verified -> "idle"
+                    showArrow -> "arrow"
+                    else -> "check"
+                },
+                transitionSpec = { fadeIn(tween(220)) togetherWith fadeOut(tween(160)) },
+                label = "confirmPill",
+            ) { face ->
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    when (face) {
+                        "check" -> Icon(
+                            Icons.Default.Check,
+                            contentDescription = stringResource(R.string.onboarding_v2_api_key_valid),
+                            tint = Color.White,
+                            modifier = Modifier.size(24.dp),
+                        )
+                        "arrow" -> ArrowGlyph(
+                            Modifier.size(30.dp),
+                            Color.White,
+                        )
+                        else -> Text(
+                            text = stringResource(R.string.onboarding_v2_continue),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Medium,
+                            color = Color.White.copy(alpha = 0.45f),
+                        )
+                    }
+                }
+            }
         }
     }
 
-    TextButton(onClick = onCancel, modifier = Modifier.padding(top = 4.dp)) {
-        Text(
-            text = stringResource(R.string.onboarding_v2_back),
-            fontSize = 14.sp,
-            color = MutedText,
-        )
+    Text(
+        text = stringResource(R.string.onboarding_v2_back),
+        modifier = Modifier
+            .padding(top = 10.dp)
+            .clickableNoRipple(onBack),
+        fontSize = 14.sp,
+        color = HintBlue,
+    )
+}
+
+/** A pill whose fill drifts, shared by the primary action. */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FlowGradientPill(
+    onClick: () -> Unit,
+    height: androidx.compose.ui.unit.Dp,
+    content: @Composable () -> Unit,
+) {
+    val transition = rememberInfiniteTransition(label = "pillFlow")
+    val t by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(6_000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "pillPhase",
+    )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(height),
+        shape = RoundedCornerShape(50),
+        color = Color.Transparent,
+        onClick = onClick,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            Color(0xFF1D4ED8),
+                            Color(0xFF2563EB),
+                            Color(0xFF3B82F6),
+                            Color(0xFF1D4ED8),
+                        ),
+                        start = Offset(-200f + 700f * t, 0f),
+                        end = Offset(600f + 700f * t, 220f),
+                    ),
+                ),
+            contentAlignment = Alignment.Center,
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) { content() }
+        }
     }
 }
 
 /**
- * The DeepSeek mark, as a whale silhouette.
+ * The DeepSeek mark: a whale in profile.
  *
- * Drawn rather than shipped as a bitmap: it has to be tinted to whatever sits
- * behind it (white on the ink pill) and stay crisp at 20dp, and there is no
+ * Drawn as paths rather than shipped as a bitmap — it has to sit white on a
+ * gradient pill, blue on the ground, and stay crisp at 20dp, and there is no
  * DeepSeek artwork in the tree to ship.
  */
 @Composable
-private fun DeepSeekWhaleMark(modifier: Modifier = Modifier, tint: Color) {
+private fun WhaleMark(modifier: Modifier = Modifier, tint: Color) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
 
-        // Body: tail at the far left, back rising over the shoulder, nose at
-        // the right, belly returning.
+        // Body + tail, one silhouette: snout left, back over the head, fluke
+        // raised at upper right, then the belly returning.
         val body = Path().apply {
-            moveTo(w * 0.04f, h * 0.52f)
-            cubicTo(w * 0.12f, h * 0.26f, w * 0.36f, h * 0.16f, w * 0.60f, h * 0.22f)
-            cubicTo(w * 0.78f, h * 0.26f, w * 0.90f, h * 0.38f, w * 0.98f, h * 0.48f)
-            cubicTo(w * 0.87f, h * 0.57f, w * 0.75f, h * 0.66f, w * 0.60f, h * 0.70f)
-            cubicTo(w * 0.36f, h * 0.78f, w * 0.13f, h * 0.72f, w * 0.04f, h * 0.52f)
+            moveTo(w * 0.06f, h * 0.54f)
+            cubicTo(w * 0.08f, h * 0.30f, w * 0.30f, h * 0.16f, w * 0.50f, h * 0.22f)
+            cubicTo(w * 0.60f, h * 0.25f, w * 0.65f, h * 0.29f, w * 0.68f, h * 0.33f)
+            lineTo(w * 0.74f, h * 0.20f)
+            cubicTo(w * 0.79f, h * 0.12f, w * 0.86f, h * 0.09f, w * 0.89f, h * 0.14f)
+            cubicTo(w * 0.92f, h * 0.19f, w * 0.88f, h * 0.30f, w * 0.82f, h * 0.40f)
+            cubicTo(w * 0.86f, h * 0.46f, w * 0.84f, h * 0.55f, w * 0.77f, h * 0.57f)
+            cubicTo(w * 0.72f, h * 0.58f, w * 0.68f, h * 0.55f, w * 0.65f, h * 0.51f)
+            cubicTo(w * 0.57f, h * 0.66f, w * 0.40f, h * 0.78f, w * 0.24f, h * 0.74f)
+            cubicTo(w * 0.12f, h * 0.71f, w * 0.06f, h * 0.64f, w * 0.06f, h * 0.54f)
             close()
         }
         drawPath(body, tint)
 
-        // Tail fin: a wedge under the tail, so it reads as a whale and not a fish.
-        val fin = Path().apply {
-            moveTo(w * 0.05f, h * 0.50f)
-            cubicTo(w * 0.13f, h * 0.58f, w * 0.19f, h * 0.70f, w * 0.21f, h * 0.92f)
-            cubicTo(w * 0.12f, h * 0.80f, w * 0.06f, h * 0.68f, w * 0.05f, h * 0.50f)
+        // Belly: a notch in the ground colour, which is what gives the mark its
+        // crescent weight instead of reading as a blob.
+        val belly = Path().apply {
+            moveTo(w * 0.20f, h * 0.58f)
+            cubicTo(w * 0.28f, h * 0.72f, w * 0.48f, h * 0.70f, w * 0.60f, h * 0.52f)
+            cubicTo(w * 0.48f, h * 0.46f, w * 0.30f, h * 0.46f, w * 0.20f, h * 0.58f)
             close()
         }
-        drawPath(fin, tint.copy(alpha = 0.85f))
+        drawPath(belly, NavyDeep.copy(alpha = if (tint == GlassWhite) 0.9f else 0f))
 
-        // Eye: punched out in the background colour so it reads on any pill.
+        // Eye.
         drawCircle(
-            color = InkBlack,
-            radius = w * 0.055f,
-            center = Offset(w * 0.74f, h * 0.40f),
+            color = NavyDeep,
+            radius = w * 0.030f,
+            center = Offset(w * 0.33f, h * 0.44f),
         )
     }
 }
-@Composable
-private fun ClaudeStarburstIcon(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val cx = size.width / 2f
-        val cy = size.height / 2f
-        val outerR = size.minDimension * 0.46f
-        val innerR = size.minDimension * 0.10f
-        val rays = 12
-        for (i in 0 until rays) {
-            val angle = (i * (360f / rays) - 15f) * (Math.PI / 180.0)
-            val lenFactor = if (i % 2 == 0) 1.0f else 0.88f
-            val sx = cx + (innerR * cos(angle)).toFloat()
-            val sy = cy + (innerR * sin(angle)).toFloat()
-            val ex = cx + (outerR * lenFactor * cos(angle)).toFloat()
-            val ey = cy + (outerR * lenFactor * sin(angle)).toFloat()
-            drawLine(
-                color = Terracotta,
-                start = Offset(sx, sy),
-                end = Offset(ex, ey),
-                strokeWidth = size.minDimension * 0.095f,
-                cap = StrokeCap.Round,
-            )
-        }
-    }
-}
 
-/**
- * The hero: a terracotta node-link constellation behind a single continuous
- * black line drawing. Drawn rather than shipped as a bitmap so it scales and
- * recolours with the theme.
- */
+/** Four-point sparkle for the overline badge. */
 @Composable
-private fun ClaudeHeroIllustration(modifier: Modifier = Modifier) {
+private fun SparkleMark(modifier: Modifier = Modifier, tint: Color) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-
-        val hub = Offset(w * 0.44f, h * 0.48f)
-        val nTopLeft = Offset(w * 0.25f, h * 0.19f)
-        val nTopMid = Offset(w * 0.36f, h * 0.10f)
-        val nMidRight = Offset(w * 0.56f, h * 0.31f)
-        val nFarRight = Offset(w * 0.72f, h * 0.32f)
-        val nBotLeft = Offset(w * 0.34f, h * 0.50f)
-
-        val linkStroke = w * 0.024f
-        drawLine(Terracotta, nTopLeft, hub, strokeWidth = linkStroke, cap = StrokeCap.Round)
-        drawLine(Terracotta, nTopMid, hub, strokeWidth = linkStroke, cap = StrokeCap.Round)
-        drawLine(Terracotta, nMidRight, hub, strokeWidth = linkStroke, cap = StrokeCap.Round)
-        drawLine(Terracotta, nFarRight, hub, strokeWidth = linkStroke, cap = StrokeCap.Round)
-        drawLine(Terracotta, nBotLeft, nFarRight, strokeWidth = linkStroke, cap = StrokeCap.Round)
-        drawLine(Terracotta, nBotLeft, nMidRight, strokeWidth = linkStroke * 0.9f, cap = StrokeCap.Round)
-
-        drawCircle(Terracotta, radius = w * 0.048f, center = nTopLeft)
-        drawCircle(Terracotta, radius = w * 0.044f, center = nTopMid)
-        drawCircle(Terracotta, radius = w * 0.044f, center = nMidRight)
-        drawCircle(Terracotta, radius = w * 0.048f, center = nFarRight)
-        drawCircle(Terracotta, radius = w * 0.052f, center = nBotLeft)
-        drawCircle(Terracotta, radius = w * 0.068f, center = hub)
-
-        val path = Path().apply {
-            // Four finger loops.
-            moveTo(w * 0.25f, h * 0.67f)
-            cubicTo(w * 0.26f, h * 0.52f, w * 0.29f, h * 0.47f, w * 0.30f, h * 0.50f)
-            cubicTo(w * 0.31f, h * 0.53f, w * 0.28f, h * 0.64f, w * 0.29f, h * 0.65f)
-            cubicTo(w * 0.30f, h * 0.66f, w * 0.32f, h * 0.46f, w * 0.34f, h * 0.47f)
-            cubicTo(w * 0.35f, h * 0.48f, w * 0.32f, h * 0.62f, w * 0.33f, h * 0.63f)
-            cubicTo(w * 0.34f, h * 0.64f, w * 0.36f, h * 0.45f, w * 0.38f, h * 0.46f)
-            cubicTo(w * 0.39f, h * 0.47f, w * 0.37f, h * 0.60f, w * 0.38f, h * 0.61f)
-            cubicTo(w * 0.39f, h * 0.62f, w * 0.40f, h * 0.46f, w * 0.42f, h * 0.47f)
-            // Dip, then the deep right loop.
-            cubicTo(w * 0.43f, h * 0.48f, w * 0.40f, h * 0.68f, w * 0.44f, h * 0.68f)
-            cubicTo(w * 0.47f, h * 0.68f, w * 0.46f, h * 0.48f, w * 0.50f, h * 0.50f)
-            cubicTo(w * 0.53f, h * 0.52f, w * 0.46f, h * 0.87f, w * 0.57f, h * 0.88f)
-            cubicTo(w * 0.67f, h * 0.89f, w * 0.72f, h * 0.74f, w * 0.69f, h * 0.64f)
-            // Upper profile rising to the top right.
-            cubicTo(w * 0.66f, h * 0.54f, w * 0.58f, h * 0.55f, w * 0.58f, h * 0.46f)
-            cubicTo(w * 0.58f, h * 0.39f, w * 0.61f, h * 0.36f, w * 0.59f, h * 0.27f)
-            cubicTo(w * 0.57f, h * 0.19f, w * 0.61f, h * 0.09f, w * 0.69f, h * 0.06f)
+        val p = Path().apply {
+            moveTo(w * 0.5f, 0f)
+            cubicTo(w * 0.58f, h * 0.36f, w * 0.64f, h * 0.42f, w, h * 0.5f)
+            cubicTo(w * 0.64f, h * 0.58f, w * 0.58f, h * 0.64f, w * 0.5f, h)
+            cubicTo(w * 0.42f, h * 0.64f, w * 0.36f, h * 0.58f, 0f, h * 0.5f)
+            cubicTo(w * 0.36f, h * 0.42f, w * 0.42f, h * 0.36f, w * 0.5f, 0f)
+            close()
         }
+        drawPath(p, tint)
+    }
+}
 
+/** A chevron-arrow, drawn so it keeps its weight at any pill size. */
+@Composable
+private fun ArrowGlyph(modifier: Modifier = Modifier, tint: Color) {
+    Canvas(modifier = modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = h * 0.16f
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.10f, h * 0.50f),
+            end = Offset(w * 0.86f, h * 0.50f),
+            strokeWidth = stroke,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+        val head = Path().apply {
+            moveTo(w * 0.58f, h * 0.20f)
+            lineTo(w * 0.88f, h * 0.50f)
+            lineTo(w * 0.58f, h * 0.80f)
+        }
         drawPath(
-            path = path,
-            color = InkBlack,
-            style = Stroke(
-                width = w * 0.030f,
-                cap = StrokeCap.Round,
-                join = StrokeJoin.Round,
-            ),
+            head,
+            tint,
+            style = Stroke(width = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                join = androidx.compose.ui.graphics.StrokeJoin.Round),
         )
     }
 }
+
+/** A text link with no ripple — the back action is deliberately quiet. */
+@Composable
+private fun Modifier.clickableNoRipple(onClick: () -> Unit): Modifier =
+    this.clickable(
+        interactionSource = remember { MutableInteractionSource() },
+        indication = null,
+        onClick = onClick,
+    )

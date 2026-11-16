@@ -85,30 +85,13 @@ fun AddProviderScreen(
     onBack: () -> Unit,
     onSaved: () -> Unit,
 ) {
-    // [T-android-onboarding-v2] A key handed over from the welcome screen
-    // arrives here. Read once, on first composition, then cleared — so backing
-    // out and returning shows an empty form rather than resurrecting a key the
-    // user thought they had abandoned.
-    val handedOffKey = remember { com.openminis.app.ui.onboarding.OnboardingHandoff.consume() }
-    var step by remember {
-        mutableStateOf(
-            if (handedOffKey != null) AddProviderStep.CONFIGURE else AddProviderStep.CHOOSE_TYPE
-        )
-    }
-    var selectedType by remember {
-        mutableStateOf<ProviderType?>(if (handedOffKey != null) ProviderType.openAI else null)
-    }
-    var selectedCredential by remember {
-        mutableStateOf<ProviderCredential?>(
-            if (handedOffKey != null) ProviderCredential.apiKey else null
-        )
-    }
+    var step by remember { mutableStateOf(AddProviderStep.CHOOSE_TYPE) }
+    var selectedType by remember { mutableStateOf<ProviderType?>(null) }
+    var selectedCredential by remember { mutableStateOf<ProviderCredential?>(null) }
     // [T-android-deepseek-only] Which vendor the entry point named, so the form
     // opens showing it instead of the generic protocol name. Null means "the
     // user picked a protocol" and the form keeps its old defaults.
-    var presetVendorLabel by remember {
-        mutableStateOf(if (handedOffKey != null) "DeepSeek" else null)
-    }
+    var presetVendorLabel by remember { mutableStateOf<String?>(null) }
     // [T-android-provider-voice] Non-null when the flow was entered from a
     // Voice Chat Provider template row — preseeds type/base URL/label/appendV1
     // on the configure step (mirrors iOS applyVoiceTemplate).
@@ -191,7 +174,6 @@ fun AddProviderScreen(
             credentialType = selectedCredential!!,
             providerRepository = providerRepository,
             voiceTemplate = selectedVoiceTemplate,
-            prefillApiKey = handedOffKey.orEmpty(),
             presetVendorLabel = presetVendorLabel,
             onBack = handleBack,
             onSaved = onSaved,
@@ -374,9 +356,6 @@ private fun ConfigureProviderScreen(
     credentialType: ProviderCredential,
     providerRepository: ProviderRepository,
     voiceTemplate: com.openminis.app.data.model.VoiceProviderTemplate? = null,
-    // [T-android-onboarding-v2] Key handed over from the welcome screen. Empty
-    // in every other entry path.
-    prefillApiKey: String = "",
     // [T-android-deepseek-only] Vendor named by the entry point, if any.
     presetVendorLabel: String? = null,
     onBack: () -> Unit,
@@ -416,7 +395,7 @@ private fun ConfigureProviderScreen(
     androidx.compose.runtime.LaunchedEffect(defaultLabel, labelEdited) {
         if (!labelEdited) label = defaultLabel
     }
-    var apiKey by remember { mutableStateOf(prefillApiKey) }
+    var apiKey by remember { mutableStateOf("") }
     var customBaseURL by remember {
         mutableStateOf(
             voiceTemplate?.baseURL

@@ -95,6 +95,10 @@ private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
  */
 private const val DEEPSEEK_CONSOLE_URL = "https://platform.deepseek.com"
 
+/** Where a verified key points. Shared with the onboarding screen's validator. */
+private const val DEEPSEEK_API_BASE = "https://api.deepseek.com"
+private const val DEEPSEEK_LABEL = "DeepSeek"
+
 object Routes {
     const val SESSION_LIST = "sessions"
     const val CHAT = "chat/{sessionId}"
@@ -699,21 +703,35 @@ fun AppNavigation(
                         }
                     }
                 },
-                onSubmitApiKey = { key ->
+                onApiVerified = { key ->
                     finishGuide()
-                    // The key rides an in-memory handoff, not a route argument:
-                    // arguments land in the back stack and in saved instance
-                    // state, and neither is a place for a credential.
-                    com.openminis.app.ui.onboarding.OnboardingHandoff.offer(key)
-                    // Straight to the provider form (the "配置 OpenAI" step),
-                    // which reads the handoff and opens on DeepSeek already
-                    // filled in — no type picker, no credential picker.
-                    if (navController.currentDestination?.route != Routes.SESSION_LIST) {
-                        navController.navigate(Routes.SESSION_LIST) {
-                            popUpTo(Routes.ONBOARDING) { inclusive = true }
-                        }
+                    // [T-android-onboarding-deepseek] Verified means usable, so
+                    // the provider is created here rather than handed to a form.
+                    //
+                    // The key was already accepted by the vendor's models
+                    // endpoint before this lambda ran — asking the user to
+                    // re-enter it on a settings page, which is what the form
+                    // would do, is asking them to retype the one thing we just
+                    // proved works. Everything the form would have filled in is
+                    // decided by ProviderAutoConfig from the label.
+                    val created = com.openminis.app.data.model.ProviderInstance(
+                        id = java.util.UUID.randomUUID().toString(),
+                        label = DEEPSEEK_LABEL,
+                        providerType = com.openminis.app.data.model.ProviderType.openAI,
+                        credentialType = com.openminis.app.data.model.ProviderCredential.apiKey,
+                        customBaseURL = DEEPSEEK_API_BASE,
+                    )
+                    providerRepository.addInstance(created)
+                    providerRepository.saveApiKey(created.id, key)
+                    // On the repository's scope, not this screen's: navigating
+                    // away on the next line tears down composition, and the
+                    // fetch used to die with it (GH#265).
+                    providerRepository.triggerAsyncModelReconcile(created.id)
+                    // Straight into a new conversation, which is the first thing
+                    // a person who just connected a model wants.
+                    navController.navigate(Routes.chat(newDraftSessionId())) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
                     }
-                    navController.navigate(Routes.ADD_PROVIDER) { launchSingleTop = true }
                 },
             )
         }
