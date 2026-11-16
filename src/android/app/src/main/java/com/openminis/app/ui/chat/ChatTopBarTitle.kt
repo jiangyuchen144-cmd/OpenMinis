@@ -110,6 +110,13 @@ fun ChatTopBarTitle(
     pulseProvider: () -> Float,
     workingDescription: String,
     doneDescription: String,
+    /**
+     * Whether the run that just ended succeeded. Evaluated once, when the
+     * Working phase ends — a cancelled or failed turn drops straight back to
+     * the title instead of showing a completion check, because "isStreaming
+     * went false" is equally true of a user stop and an error.
+     */
+    completedSuccessfully: () -> Boolean,
     modifier: Modifier = Modifier,
     titleContent: @Composable () -> Unit,
 ) {
@@ -134,7 +141,13 @@ fun ChatTopBarTitle(
             delay(OFF_DELAY_MS)
             val remaining = MIN_WORKING_MS - (SystemClock.elapsedRealtime() - workingSince)
             if (remaining > 0L) delay(remaining)
-            if (reducedState.value) {
+            // [T-android-topbar-title-slot] Only a SUCCESSFUL run gets the check.
+            // Cancelled and failed runs share this transition (isStreaming goes
+            // false either way), and showing "reply finished" over a turn the
+            // user deliberately stopped — or one that errored — is a lie. A
+            // failed run may still be flashing the fallback pulse right here,
+            // which a check would contradict.
+            if (reducedState.value || !completedSuccessfully()) {
                 phase = TitlePhase.Idle
             } else {
                 showDone = true

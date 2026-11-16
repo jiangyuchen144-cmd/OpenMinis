@@ -3034,6 +3034,12 @@ fun ChatScreen(
                             pulseProvider = { fallbackPulseAlpha.value },
                             workingDescription = stringResource(R.string.chat_title_working),
                             doneDescription = stringResource(R.string.chat_title_done),
+                            // Only a clean finish gets the check. A user stop and a
+                            // failed turn both drop isStreaming, and both used to
+                            // read as "reply finished".
+                            completedSuccessfully = {
+                                viewModel.lastTurnEndReason.value == TurnEndReason.Completed
+                            },
                         ) {
                             // Nav title: current session title when one
                             // exists and the toggle is on, else fall back to

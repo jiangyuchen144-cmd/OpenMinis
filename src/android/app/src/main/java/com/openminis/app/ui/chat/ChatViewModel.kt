@@ -1227,6 +1227,19 @@ class ChatViewModel(
     val isStreaming: StateFlow<Boolean> = _isStreaming.asStateFlow()
 
     /**
+     * [T-android-topbar-title-slot] How the last run ended, for UI that must not
+     * call a cancelled or failed turn "finished".
+     *
+     * Set on the SAME isStreaming falling edge that consumes
+     * [lastTurnWasCancelled], because that flag is one-shot: several collectors
+     * race on the edge and whichever reads it first resets it, so a separate
+     * observer would see a stale false and report a user stop as a success.
+     * Null until the first run in this ViewModel ends.
+     */
+    private val _lastTurnEndReason = MutableStateFlow<TurnEndReason?>(null)
+    val lastTurnEndReason: StateFlow<TurnEndReason?> = _lastTurnEndReason.asStateFlow()
+
+    /**
      * T261: tool detail sheet visibility, persistent across LazyColumn
      * recomposition / item disposal so a streaming tool's sheet doesn't
      * snap shut when its pill scrolls out of viewport. Stable key = tool
@@ -5954,6 +5967,17 @@ class ChatViewModel(
             isStreaming.collect { streaming ->
                 val justFinished = wasStreaming && !streaming
                 wasStreaming = streaming
+                if (justFinished) {
+                    // [T-android-topbar-title-slot] Record HOW the run ended before
+                    // anything resets `lastTurnWasCancelled` — see [_lastTurnEndReason].
+                    // A user stop and a failed turn must not read as "finished".
+                    _lastTurnEndReason.value = when {
+                        lastTurnWasCancelled -> TurnEndReason.Cancelled
+                        com.openminis.app.notification.BackgroundTurnOutcome
+                            .currentTurnError(_messages.value) != null -> TurnEndReason.Failed
+                        else -> TurnEndReason.Completed
+                    }
+                }
                 if (!justFinished) return@collect
                 if (lastTurnWasCancelled) {
                     lastTurnWasCancelled = false
