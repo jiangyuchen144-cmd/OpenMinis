@@ -15,6 +15,7 @@ on:
   push:
     branches:
       - android-md-parse-tailcap
+      - android-topbar-title-slot
 
 permissions:
   contents: write
