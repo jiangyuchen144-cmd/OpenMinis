@@ -2531,4 +2531,8 @@
     <string name="chat_menu_balance">API 余额</string>
     <string name="chat_menu_top_up">充值</string>
     <string name="chat_menu_top_up_failed">没有可打开链接的应用</string>
+
+    <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
+    <string name="onboarding_gate_title">欢迎</string>
+    <string name="onboarding_gate_skip">跳过</string>
 </resources>

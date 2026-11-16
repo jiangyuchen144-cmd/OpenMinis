@@ -13,70 +13,71 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import com.openminis.app.deeplink.DeepLinkAction
-import com.openminis.app.deeplink.DeepLinkCoordinator
-import com.openminis.app.ui.settings.KEY_LAUNCH_SESSION
-import com.openminis.app.ui.settings.getAppearancePrefs
+import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
-import androidx.compose.ui.window.DialogProperties
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.dialog
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.openminis.app.data.repository.ChatRepository
+import com.openminis.app.data.repository.EnvVarRepository
+import com.openminis.app.data.repository.MemoryRepository
 import com.openminis.app.data.repository.ProviderRepository
+import com.openminis.app.data.repository.SkillRepository
+import com.openminis.app.deeplink.DeepLinkAction
+import com.openminis.app.deeplink.DeepLinkCoordinator
+import com.openminis.app.sandbox.RootfsManager
+import com.openminis.app.sandbox.TerminalSession
 import com.openminis.app.ui.chat.ChatScreen
-import com.openminis.app.ui.sessions.SessionListScreen
-import com.openminis.app.ui.settings.AboutScreen
-import com.openminis.app.ui.settings.AddAgentLoopGroupsScreen
-import com.openminis.app.ui.settings.AddAgentLoopModelsScreen
-import com.openminis.app.ui.settings.AddCustomModelScreen
-import com.openminis.app.ui.settings.BackgroundSettingsScreen
-import com.openminis.app.ui.settings.AddModelsToGroupScreen
-import com.openminis.app.ui.settings.ShadowVoiceDetailScreen
-import com.openminis.app.ui.settings.AddProviderScreen
-import com.openminis.app.ui.settings.ModelEntryDetailScreen
-import com.openminis.app.ui.settings.ModelGroupDetailScreen
-import com.openminis.app.ui.settings.ModelGroupsScreen
-import com.openminis.app.ui.settings.ProviderDetailScreen
-import com.openminis.app.ui.settings.ProviderListScreen
+import com.openminis.app.ui.onboarding.OnboardingModelSelectionScreen
 import com.openminis.app.ui.sandbox.FileBrowserScreen
 import com.openminis.app.ui.sandbox.FileBrowserViewModel
 import com.openminis.app.ui.sandbox.FileItem
 import com.openminis.app.ui.sandbox.FilePreviewScreen
 import com.openminis.app.ui.sandbox.RootfsManagementScreen
-import com.openminis.app.ui.settings.EnvironmentVariablesScreen
+import com.openminis.app.ui.sessions.SessionListScreen
+import com.openminis.app.ui.settings.AboutScreen
+import com.openminis.app.ui.settings.AddAgentLoopGroupsScreen
+import com.openminis.app.ui.settings.AddAgentLoopModelsScreen
+import com.openminis.app.ui.settings.AddCustomModelScreen
+import com.openminis.app.ui.settings.AddModelsToGroupScreen
+import com.openminis.app.ui.settings.AddProviderScreen
 import com.openminis.app.ui.settings.AppearanceScreen
-import com.openminis.app.ui.settings.SettingsScreen
-import com.openminis.app.ui.settings.SystemPermissionsScreen
-import com.openminis.app.ui.settings.SessionStorageDetailScreen
-import com.openminis.app.ui.settings.SkillDetailScreen
-import com.openminis.app.ui.settings.StorageManagementScreen
-import com.openminis.app.ui.settings.SkillFileViewerScreen
-import com.openminis.app.ui.settings.UsageStatsScreen
-import com.openminis.app.ui.settings.MinisSkillsBrowserScreen
-import com.openminis.app.ui.settings.MountDetailScreen
-import com.openminis.app.ui.settings.MountedFoldersScreen
-import com.openminis.app.ui.settings.SharedFolderDetailScreen
-import com.openminis.app.ui.settings.SharedFoldersScreen
-import com.openminis.app.ui.settings.SkillsManagementScreen
-import com.openminis.app.data.repository.EnvVarRepository
-import com.openminis.app.data.repository.MemoryRepository
-import com.openminis.app.data.repository.SkillRepository
+import com.openminis.app.ui.settings.BackgroundSettingsScreen
+import com.openminis.app.ui.settings.EnvironmentVariablesScreen
+import com.openminis.app.ui.settings.KEY_LAUNCH_SESSION
 import com.openminis.app.ui.settings.LogDetailScreen
 import com.openminis.app.ui.settings.LogManagementScreen
 import com.openminis.app.ui.settings.MemoryFileEditScreen
 import com.openminis.app.ui.settings.MemoryManagementScreen
+import com.openminis.app.ui.settings.MinisSkillsBrowserScreen
+import com.openminis.app.ui.settings.ModelEntryDetailScreen
+import com.openminis.app.ui.settings.ModelGroupDetailScreen
+import com.openminis.app.ui.settings.ModelGroupsScreen
+import com.openminis.app.ui.settings.MountDetailScreen
+import com.openminis.app.ui.settings.MountedFoldersScreen
 import com.openminis.app.ui.settings.OffloadPermissionScreen
+import com.openminis.app.ui.settings.ProviderDetailScreen
+import com.openminis.app.ui.settings.ProviderListScreen
+import com.openminis.app.ui.settings.SessionStorageDetailScreen
+import com.openminis.app.ui.settings.SettingsScreen
+import com.openminis.app.ui.settings.ShadowVoiceDetailScreen
+import com.openminis.app.ui.settings.SharedFolderDetailScreen
+import com.openminis.app.ui.settings.SharedFoldersScreen
 import com.openminis.app.ui.settings.ShizukuPermissionScreen
-import com.openminis.app.sandbox.RootfsManager
-import com.openminis.app.sandbox.TerminalSession
+import com.openminis.app.ui.settings.SkillDetailScreen
+import com.openminis.app.ui.settings.SkillFileViewerScreen
+import com.openminis.app.ui.settings.SkillsManagementScreen
+import com.openminis.app.ui.settings.StorageManagementScreen
+import com.openminis.app.ui.settings.SystemPermissionsScreen
+import com.openminis.app.ui.settings.UsageStatsScreen
+import com.openminis.app.ui.settings.getAppearancePrefs
 import com.openminis.app.ui.terminal.TerminalScreen
-import com.openminis.app.ui.onboarding.OnboardingModelSelectionScreen
 import kotlinx.coroutines.flow.first
 
 // T342: Material 3 motion easing curves. Compose-Material3 (1.3.x) ships
@@ -202,6 +203,8 @@ object Routes {
     const val BACKGROUND = "background"
     const val ABOUT = "about"
     const val ONBOARDING_MODELS = "onboarding_models"
+    /** [T-android-onboarding-gate] First-launch guide; only a start destination. */
+    const val ONBOARDING = "onboarding"
     /** T219-2: Mount external folders settings + detail. */
     const val MOUNTED_FOLDERS = "mounted_folders"
     const val MOUNTED_FOLDERS_DETAIL = "mounted_folders_detail/{mountId}"
@@ -337,6 +340,36 @@ fun AppNavigation(
         }
     }
 
+    // [T-android-onboarding-gate] First-launch gate.
+    //
+    // 0 = deciding, 1 = show the guide, 2 = normal app. The initial value is a
+    // SYNCHRONOUS decision on purpose: a user who already finished onboarding,
+    // or who arrived through a deep link, must not pay a frame of blank surface
+    // or risk the launch-session navigation below. Only someone with no flag
+    // (a new install, or an upgrade from a build that predates this) starts at
+    // 0 and waits for the config.
+    //
+    // Kept in rememberSaveable so a rotation, or the process being reclaimed
+    // while the user is in the guide, does not re-open the guide or bump the
+    // user back to the sessions list.
+    val onboardingContext = androidx.compose.ui.platform.LocalContext.current
+    var onboardingState by androidx.compose.runtime.saveable.rememberSaveable {
+        androidx.compose.runtime.mutableIntStateOf(
+            if (initialDeepLink != null || com.openminis.app.ui.onboarding.OnboardingPrefs.isDone(onboardingContext)) 2 else 0
+        )
+    }
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        if (onboardingState != 0) return@LaunchedEffect
+        onboardingState = if (
+            com.openminis.app.ui.onboarding.shouldShowOnboarding(
+                context = onboardingContext,
+                awaitConfigLoaded = { providerRepository.awaitConfigLoaded() },
+                configLoaded = { providerRepository.configLoaded.value },
+                hasAnyInstance = { providerRepository.config.value.instances.isNotEmpty() },
+            )
+        ) 1 else 2
+    }
+
     // Resolve launch session preference once into a deferred navigation target.
     // T314: this LaunchedEffect fires the same frame the NavHost mounts, so
     // the SESSION_LIST start-destination's NavBackStackEntry is still in
@@ -347,7 +380,16 @@ fun AppNavigation(
     // regardless of mode 1 / 2 / 0. Wait for the start destination to
     // settle into RESUMED before navigating; for mode 3 (Home) we don't
     // need to navigate at all so we can skip the wait entirely.
-    LaunchedEffect(Unit) {
+    // [T-android-onboarding-gate] Keyed on onboardingState, not Unit, and guarded
+    // on its first line. While the gate is deciding or showing the guide the
+    // NavHost is not composed, so navigate() here would throw "graph has not
+    // been set". A Unit key would run once at state 0, return, and never run
+    // again — silently losing "reopen my last conversation on launch" for
+    // every user. With the state as the key this effect starts again as soon
+    // as the gate commits 2, in the same composition pass that mounts the
+    // NavHost, so the graph is always set by the time it navigates.
+    LaunchedEffect(onboardingState) {
+        if (onboardingState != 2) return@LaunchedEffect
         val hasDeepLink = initialDeepLink != null && initialDeepLink !is DeepLinkAction.Unknown
         if (hasDeepLink) return@LaunchedEffect
         val hasPendingShare =
@@ -548,8 +590,19 @@ fun AppNavigation(
             Routes.chat(htmlShortcut.sessionId)
         }
         quickActionStart != null -> quickActionStart
-        else -> Routes.SESSION_LIST
+        else -> if (onboardingState == 1) Routes.ONBOARDING else Routes.SESSION_LIST
     }
+    // [T-android-onboarding-gate] While the gate is deciding (0) the graph is
+    // not mounted. Navigating before a graph exists throws, and the launch
+    // effects above are the ones that would do it — they are guarded instead,
+    // but not composing at all is the unambiguous answer. State 1 DOES mount
+    // the graph, with the guide as its start destination.
+    if (onboardingState == 0) {
+        androidx.compose.material3.Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background,
+        ) {}
+    } else {
     NavHost(
         navController = navController,
         startDestination = startDestination,
@@ -1588,6 +1641,21 @@ fun AppNavigation(
             )
         }
 
+        // [T-android-onboarding-gate] First-launch guide. Reached only as a
+        // start destination (see startDestination above); the completion callback
+        // persists the flag and pops the guide out of the back stack, so back from
+        // the sessions list can never re-enter it.
+        composable(Routes.ONBOARDING) {
+            com.openminis.app.ui.onboarding.OnboardingGatePlaceholder(
+                onSkip = {
+                    com.openminis.app.ui.onboarding.OnboardingPrefs.markDone(onboardingContext)
+                    navController.navigate(Routes.SESSION_LIST) {
+                        popUpTo(Routes.ONBOARDING) { inclusive = true }
+                    }
+                },
+            )
+        }
+
         composable(Routes.ONBOARDING_MODELS) {
             OnboardingModelSelectionScreen(
                 providerRepository = providerRepository,
@@ -1646,5 +1714,6 @@ fun AppNavigation(
                 },
             )
         }
+    }
     }
 }
