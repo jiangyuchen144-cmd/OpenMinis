@@ -104,10 +104,15 @@ internal object ProviderTopUp {
     }
 
     /**
-     * @param baseUrl the instance's `customBaseURL` (null for an official
-     *   endpoint, which has no custom host to match).
+     * @param baseUrl the instance's `customBaseURL`. When it is set, the label
+     *   is NOT consulted: a relay or proxy whose label happens to contain
+     *   "DeepSeek" holds its balance somewhere else, so falling back to the
+     *   label would send the user to the wrong billing page. Unknown custom
+     *   host means no top-up button, which is the honest answer.
      */
-    fun urlFor(baseUrl: String?, label: String?): String? = byHost(baseUrl) ?: byLabel(label)
+    fun urlFor(baseUrl: String?, label: String?): String? =
+        if (baseUrl.isNullOrBlank()) byLabel(label) else byHost(baseUrl)
+
 }
 
 /**
