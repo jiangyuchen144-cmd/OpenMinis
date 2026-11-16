@@ -353,9 +353,16 @@ fun AppNavigation(
     // while the user is in the guide, does not re-open the guide or bump the
     // user back to the sessions list.
     val onboardingContext = androidx.compose.ui.platform.LocalContext.current
+    // "Arrived through a deep link" must mean a REAL one: MainActivity always
+    // passes a DeepLinkAction, and DeepLinkAction.Unknown is a non-null object,
+    // so a plain `initialDeepLink != null` is true on every ordinary launch and
+    // would suppress the guide forever. Same predicate the launch-session effect
+    // below uses. A synthesised OpenSession (process killed inside a chat) is a
+    // real action and correctly skips the guide.
+    val hasRealDeepLink = initialDeepLink != null && initialDeepLink !is DeepLinkAction.Unknown
     var onboardingState by androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableIntStateOf(
-            if (initialDeepLink != null || com.openminis.app.ui.onboarding.OnboardingPrefs.isDone(onboardingContext)) 2 else 0
+            if (hasRealDeepLink || com.openminis.app.ui.onboarding.OnboardingPrefs.isDone(onboardingContext)) 2 else 0
         )
     }
     androidx.compose.runtime.LaunchedEffect(Unit) {
