@@ -2721,4 +2721,10 @@
     <string name="mcp_dcr_registration_unreadable">The registration response could not be read.</string>
     <string name="mcp_dcr_http_status">%1$s returned HTTP %2$d.</string>
     <string name="mcp_dcr_unreadable">%1$s returned data that could not be read.</string>
+
+    <!-- [T-android-topbar-title-slot] Title-slot working / done states. -->
+    <string name="chat_title_working">Model is working…</string>
+    <string name="chat_title_done">Reply finished</string>
+    <string name="chat_menu_switch_model">Switch model</string>
+    <string name="chat_menu_thinking_level">Thinking level</string>
 </resources>

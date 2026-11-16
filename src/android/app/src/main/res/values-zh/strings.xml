@@ -2520,4 +2520,10 @@
     <string name="mcp_dcr_registration_unreadable">无法读取注册响应。</string>
     <string name="mcp_dcr_http_status">%1$s 返回了 HTTP %2$d。</string>
     <string name="mcp_dcr_unreadable">%1$s 返回的数据无法读取。</string>
+
+    <!-- [T-android-topbar-title-slot] 标题槽：工作中 / 完成；菜单：切换模型 / 思考等级。 -->
+    <string name="chat_title_working">模型正在工作…</string>
+    <string name="chat_title_done">回复完成</string>
+    <string name="chat_menu_switch_model">切换模型</string>
+    <string name="chat_menu_thinking_level">思考等级</string>
 </resources>

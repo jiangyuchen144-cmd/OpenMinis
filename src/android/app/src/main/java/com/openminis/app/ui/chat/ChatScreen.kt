@@ -3024,20 +3024,16 @@ fun ChatScreen(
                         LaunchedEffect(viewModel, fallbackTrigger) {
                             runFallbackPulse(fallbackTrigger, fallbackPulseBaseline, fallbackPulseAlpha.asPulseAlpha())
                         }
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color.Red.copy(alpha = 0.35f * fallbackPulseAlpha.value))
-                                // [T-android-topbar-shrink] vertical 4dp→2dp.
-                                // Combined with the expandedHeight drop below,
-                                // closes the dead-space gap between the model
-                                // name row and the TopAppBar bottom edge that
-                                // T-topbar-model-row-clip's 76dp overshoot left
-                                // behind. Horizontal 32dp keeps the fallback
-                                // pulse highlight comfortably padded around
-                                // the longest title.
-                                .padding(horizontal = 32.dp, vertical = 2.dp),
+                        ChatTopBarTitle(
+                            sessionKey = viewModel,
+                            isStreaming = isStreaming,
+                            // Reads the existing fallback pulse. The animation
+                            // itself (trigger, baseline, runFallbackPulse) is
+                            // untouched — only its host moved from row 3 to this
+                            // slot, because row 3 now lives in the ⋮ menu.
+                            pulseProvider = { fallbackPulseAlpha.value },
+                            workingDescription = stringResource(R.string.chat_title_working),
+                            doneDescription = stringResource(R.string.chat_title_done),
                         ) {
                             // Nav title: current session title when one
                             // exists and the toggle is on, else fall back to
@@ -3077,232 +3073,6 @@ fun ChatScreen(
                                     }
                                     .padding(horizontal = 4.dp, vertical = 2.dp),
                             )
-                            // Model picker subtitle: green dot + group +
-                            // provider/model. Tap opens the model picker —
-                            // separated from the title above so tapping the
-                            // title rows opens the rename sheet instead.
-                            Column(
-                                horizontalAlignment = Alignment.CenterHorizontally,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(6.dp))
-                                    // [T-android-modelpicker-stuck-ripple] Own the
-                                    // interaction source so the press can be
-                                    // released explicitly. Opening the picker
-                                    // sheet puts a modal window over this row, so
-                                    // the pointer's UP never reaches the clickable:
-                                    // Compose emits PressInteraction.Press with no
-                                    // matching Release and the ripple stays lit
-                                    // behind the sheet — still there after the
-                                    // sheet closes, reading as a permanent grey
-                                    // highlight on the title bar.
-                                    .clickable(
-                                        interactionSource = modelPickerInteraction,
-                                        indication = ripple(),
-                                    ) { showModelPicker = true }
-                                    .padding(horizontal = 4.dp, vertical = 1.dp),
-                            ) {
-                                // Line 1: green dot + the active group OR
-                                // model name + dropdown arrow
-                                // (iOS: "● Default ⌄" / "● GPT-6 Astra ⌄")
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(3.dp),
-                                ) {
-                                    // [T-quota-low-dot] green / yellow (the current
-                                    // model's quota or balance is low) / orange
-                                    // (signed out).
-                                    com.openminis.app.ui.quota.ModelQuotaStatusDot(
-                                        isAuthed = modelName.isNotEmpty(),
-                                        activeEntryId = viewModel.activeEntryId,
-                                        providerRepository = providerRepository,
-                                    )
-                                    // T-android-topbar-group-name-fallback:
-                                    // _selectedGroupName is empty during the
-                                    // brief window before loadSession's group
-                                    // resolve runs, or whenever a binding
-                                    // resolve fails. Falling straight to the
-                                    // "Default" badge string masks the
-                                    // active group's real name (e.g. the
-                                    // onboarding-created "Default Models" or
-                                    // any user-renamed group). Insert a real
-                                    // fallback chain: collected VM value →
-                                    // active/default group name from the live
-                                    // config → terminal badge string. Mirrors
-                                    // the #476 TopBar title fallback pattern
-                                    // (commit b4c88775).
-                                    //
-                                    // [T-android-group-resolve-skip-uncredentialed]
-                                    // ...but only while a group is ACTUALLY
-                                    // bound. This chain used to run
-                                    // unconditionally, so a session that failed
-                                    // to resolve its group — and was therefore
-                                    // running on a model from the new-chat
-                                    // default chain, unrelated to any group —
-                                    // still displayed the default group's name.
-                                    // The header then contradicted the model
-                                    // line right below it and made a real
-                                    // routing failure read as normal operation,
-                                    // which is what made that bug hard to spot.
-                                    // Mirrors iOS, which keys the group glyph
-                                    // off the binding (`isGroupBound`) rather
-                                    // than off a name lookup.
-                                    //
-                                    // [T-android-topbar-manual-entry-name] What
-                                    // this row shows when NO group is bound.
-                                    // Returning "" there dropped the label and
-                                    // the chevron both, so picking a model by
-                                    // hand (which is exactly what unbinds the
-                                    // group) left a bare green dot with no text
-                                    // beside it — the row went blank precisely
-                                    // when the user had just made an explicit
-                                    // choice, and the only way back to the
-                                    // picker was tapping an unlabelled dot.
-                                    //
-                                    // iOS renders one always-populated label
-                                    // here: the group's name when bound, the
-                                    // MODEL's name on a direct-entry pick, and
-                                    // "No model selected" when nothing resolves
-                                    // (SessionModelPicker.displayName(for:)),
-                                    // marking the group case with an extra
-                                    // stack glyph rather than by swapping the
-                                    // text out. Match that chain so the row
-                                    // always names something.
-                                    val groupNameDisplay = selectedGroupName.ifEmpty {
-                                        if (selectedGroupId == null) {
-                                            // Direct-entry pick: name the model
-                                            // that is actually in effect.
-                                            modelName
-                                        } else {
-                                            val defaultGroupId = providerRepository.defaultPrimaryGroupId
-                                            // The full word, not the picker's
-                                            // model_picker_default_badge: that
-                                            // one is abbreviated in some locales
-                                            // to fit its capsule ("Predet.").
-                                            availableGroups.firstOrNull { it.id == defaultGroupId }?.name
-                                                ?: stringResource(R.string.common_default)
-                                        }
-                                    }.ifEmpty {
-                                        // Nothing bound and no model resolved
-                                        // yet. Still name the state instead of
-                                        // collapsing to a dot, so the picker
-                                        // keeps a visible, tappable label.
-                                        stringResource(R.string.model_picker_no_model_selected)
-                                    }
-                                    if (groupNameDisplay.isNotEmpty()) {
-                                        // [T-android-topbar-manual-entry-name]
-                                        // Row 1 now names a model as readily as
-                                        // a group, so the two cases would read
-                                        // identically without this. iOS marks
-                                        // the group case with a stack glyph
-                                        // ahead of the label; Layers is the
-                                        // same stand-in the model pickers here
-                                        // already use for `square.stack.3d.up`.
-                                        if (selectedGroupId != null) {
-                                            Icon(
-                                                Icons.Default.Layers,
-                                                contentDescription = null,
-                                                tint = ChatColors.tertiaryText,
-                                                modifier = Modifier.size(10.dp),
-                                            )
-                                        }
-                                        Text(
-                                            text = groupNameDisplay,
-                                            fontSize = 12.sp,
-                                            lineHeight = 14.sp,
-                                            fontWeight = FontWeight.Medium,
-                                            color = ChatColors.secondaryText,
-                                            maxLines = 1,
-                                            style = noFontPad,
-                                        )
-                                        Icon(
-                                            Icons.Default.KeyboardArrowDown,
-                                            contentDescription = null,
-                                            tint = ChatColors.tertiaryText,
-                                            modifier = Modifier.size(14.dp),
-                                        )
-                                    }
-                                }
-                                // Line 2: "provider · model" (iOS: "MiniMax ·
-                                // MiniMax-M2.7") + the thinking-level badge laid
-                                // out as a Row of two SEPARATE tappable siblings
-                                // (mirrors iOS AIChatView row-2 HStack).
-                                //
-                                // [T-android-thinking-badge-navbar] Gesture
-                                // separation: the whole subtitle Column above owns
-                                // `clickable { showModelPicker = true }`, so a tap
-                                // on the model text still opens the model picker.
-                                // The badge declares its OWN `clickable` (see
-                                // ThinkingLevelBadge), and in Compose the innermost
-                                // clickable consumes the down/up events — so a tap
-                                // that lands on the badge opens the thinking sheet
-                                // and never bubbles up to the Column's model-picker
-                                // handler. Two hit targets, zero gesture conflict,
-                                // no pointerInput plumbing needed.
-                                //
-                                // Sizing: the model text takes `weight(1f, fill =
-                                // false)` so it truncates first (Ellipsis) when the
-                                // navbar is narrow; the badge has no weight, so it
-                                // keeps its intrinsic width and always renders in
-                                // full — the level label never gets clipped.
-                                if (providerName.isNotEmpty() || modelName.isNotEmpty()) {
-                                    val thinkingLevelBadgeState by viewModel.thinkingLevel.collectAsState()
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                    ) {
-                                        // [T-codex-fast-mode] Speed badge ahead of the
-                                        // resolved model name, shown only while a
-                                        // faster tier is on AND the active model is
-                                        // eligible (iOS 9e3c76ef row-3 placement).
-                                        // [T-speed-tier-icons] Outline bolt for
-                                        // Fast, solid bolt for Ultrafast.
-                                        // displayedSpeedTier is already STANDARD for
-                                        // an ineligible model, and FAST where
-                                        // Ultrafast falls back.
-                                        val navSpeedTier by viewModel.displayedSpeedTier.collectAsState()
-                                        SpeedTierNavBadge(navSpeedTier)
-                                        Text(
-                                            text = if (providerName.isNotEmpty() && modelName.isNotEmpty()) {
-                                                "$providerName · $modelName"
-                                            } else {
-                                                modelName.ifEmpty { providerName }
-                                            },
-                                            fontSize = 11.sp,
-                                            lineHeight = 13.sp,
-                                            color = ChatColors.tertiaryText,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                            style = noFontPad,
-                                            // Yield first when space is tight; the
-                                            // badge to the right stays intrinsic.
-                                            modifier = Modifier.weight(1f, fill = false),
-                                        )
-                                        // Show the badge whenever thinking is on,
-                                        // and ALSO when it's Off but the active
-                                        // model supports deep thinking (iOS
-                                        // parity, e6bd75efc): the icon + "Off"
-                                        // pill is then a discoverable tap target
-                                        // for enabling thinking via the level
-                                        // sheet. The Off pill is gated on
-                                        // currentModelSupportsReasoning so
-                                        // non-reasoning models don't grow a dead
-                                        // toggle; an enabled level still shows
-                                        // unconditionally (user may have opted in
-                                        // on an unknown-capability model).
-                                        if (viewModel.availableThinkingLevels.isNotEmpty() &&
-                                            (
-                                                thinkingLevelBadgeState.isEnabled ||
-                                                    viewModel.currentModelSupportsReasoning
-                                            )
-                                        ) {
-                                            ThinkingLevelBadge(
-                                                level = thinkingLevelBadgeState,
-                                                onClick = { showThinkingLevelSheet = true },
-                                            )
-                                        }
-                                    }
-                                }
-                            }
                         }
                     }
                 },
@@ -3447,6 +3217,69 @@ fun ChatScreen(
                                 },
                                 leadingIcon = {
                                     MenuItemIcon(Icons.Default.Search)
+                                },
+                            )
+                            // [T-android-topbar-title-slot] Model switching and the
+                            // thinking level were rows 2–3 of the title bar until the
+                            // bar was reduced to a single title. They live here now.
+                            //
+                            // The group label keeps the original three-step fallback
+                            // verbatim, including its "only look up a group name when a
+                            // group is ACTUALLY bound" guard — running that chain
+                            // unconditionally displayed the default group's name for a
+                            // session that had failed to resolve one, which is exactly
+                            // how a routing failure came to look like normal operation
+                            // (T-android-group-resolve-skip-uncredentialed).
+                            val groupLabelChain = selectedGroupName.ifEmpty {
+                                if (selectedGroupId == null) {
+                                    modelName
+                                } else {
+                                    val defaultGroupId = providerRepository.defaultPrimaryGroupId
+                                    availableGroups.firstOrNull { it.id == defaultGroupId }?.name
+                                        ?: stringResource(R.string.common_default)
+                                }
+                            }.ifEmpty {
+                                stringResource(R.string.model_picker_no_model_selected)
+                            }
+                            val thinkingLevelBadgeState by viewModel.thinkingLevel.collectAsState()
+                            ChatModelMenuItems(
+                                switchModelText = stringResource(R.string.chat_menu_switch_model),
+                                modelLabel = groupLabelChain,
+                                modelDetail = if (providerName.isNotEmpty() && modelName.isNotEmpty()) {
+                                    "$providerName · $modelName"
+                                } else {
+                                    modelName.ifEmpty { providerName }
+                                },
+                                onPickModel = {
+                                    showChatMenu = false
+                                    showModelPicker = true
+                                },
+                                thinkingText = stringResource(R.string.chat_menu_thinking_level),
+                                // Display condition moved verbatim from row 3.
+                                showThinkingEntry = viewModel.availableThinkingLevels.isNotEmpty() &&
+                                    (
+                                        thinkingLevelBadgeState.isEnabled ||
+                                            viewModel.currentModelSupportsReasoning
+                                        ),
+                                thinkingBadge = {
+                                    ThinkingLevelBadge(
+                                        level = thinkingLevelBadgeState,
+                                        onClick = {
+                                            showChatMenu = false
+                                            showThinkingLevelSheet = true
+                                        },
+                                    )
+                                },
+                                onOpenThinking = {
+                                    showChatMenu = false
+                                    showThinkingLevelSheet = true
+                                },
+                                // [T-codex-fast-mode] The speed badge kept its
+                                // "only while a faster tier is on" behaviour:
+                                // SpeedTierNavBadge returns early for STANDARD.
+                                modelTrailing = {
+                                    val navSpeedTier by viewModel.displayedSpeedTier.collectAsState()
+                                    SpeedTierNavBadge(navSpeedTier)
                                 },
                             )
                             MinisMenuDivider()
