@@ -6,9 +6,21 @@ name: Build APK
 # linux-aarch64 host binaries for either aapt2 (resource compilation) or the
 # NDK (native cross-compilation), so the build cannot run on the phone.
 #
-# Release signing uses the project's own `signingConfigs.getByName("debug")`
-# (see app/build.gradle.kts) — the same config upstream uses for its published
-# builds — so no keystore secrets are needed here.
+# Release signing uses an explicitly declared signingConfig that reads
+# MINIS_SIGNING_STORE_FILE (see app/build.gradle.kts). It must be the SAME key
+# every run, otherwise build N+1 cannot install over build N and the only way
+# forward is an uninstall — which deletes the user's data directory.
+#
+# ── Cost model ───────────────────────────────────────────────────────────────
+# A cold run is ~12 min, dominated by three things that have nothing to do
+# with the code being changed:
+#   * Gradle assembleRelease  ~444 s  (mostly dependency download + R8)
+#   * rclone/gomobile         ~171 s  (unchanged between Kotlin edits)
+#   * native deps + rootfs    ~ 60 s  (unchanged between Kotlin edits)
+# So everything that is a pure function of `deps/**` is cached under its own
+# key, and everything that is a pure function of the build scripts is cached
+# under a second key. A Kotlin/Compose-only change then hits both caches and
+# re-runs only compile + dex + package.
 
 on:
   workflow_dispatch:
@@ -20,10 +32,17 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  # A newer push supersedes an in-flight build of the same branch: the old
+  # APK is already stale and the cache it would save is the one we want, so
+  # cancelling avoids queueing 12 minutes behind a superseded commit.
+  group: build-apk-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 60
     steps:
       - name: Checkout with submodules (proot, ish)
         uses: actions/checkout@v4
@@ -31,10 +50,13 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
-      - name: Free disk space
+      # The runner image already ships an Android SDK and NDK. The old step
+      # deleted them (`rm -rf $ANDROID_HOME/ndk`) to free disk, then paid
+      # ~60 s of `rm` plus ~25 s of re-download to get cmake/NDK back. Keep
+      # what is there; only drop the toolchains this build never touches.
+      - name: Free disk space (minimal)
         run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android/sdk/ndk \
-                      /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
+          sudo rm -rf /usr/share/dotnet /opt/ghc || true
           df -h /
 
       - name: JDK 17
@@ -46,22 +68,50 @@ jobs:
       - name: Android SDK packages
         run: |
           SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
-          "$SDKMANAGER" --install \
-            "platforms;android-36" \
-            "build-tools;35.0.0" \
-            "ndk;28.0.13004108" \
-            "cmake;3.22.1"
+          missing=""
+          [ -d "$ANDROID_HOME/platforms/android-36" ]      || missing="$missing platforms;android-36"
+          [ -d "$ANDROID_HOME/build-tools/35.0.0" ]        || missing="$missing build-tools;35.0.0"
+          [ -d "$ANDROID_HOME/ndk/28.0.13004108" ]         || missing="$missing ndk;28.0.13004108"
+          [ -d "$ANDROID_HOME/cmake/3.22.1" ]              || missing="$missing cmake;3.22.1"
+          if [ -n "$missing" ]; then
+            echo "installing:$missing"
+            yes | "$SDKMANAGER" --licenses >/dev/null 2>&1 || true
+            # shellcheck disable=SC2086
+            "$SDKMANAGER" --install $missing
+          else
+            echo "all required Android SDK packages are already present"
+          fi
           echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/28.0.13004108" >> $GITHUB_ENV
           ls "$ANDROID_HOME/ndk"
 
+      # Everything below is a pure function of `deps/**` and the rootfs
+      # script. None of it changes when a Kotlin file does, so a hit here
+      # removes ~171 s (gomobile/rclone) + ~60 s (proot/rootfs) per build.
+      #
+      # `src/android/app/libs/rclone.aar` is cached alongside its source
+      # because the Gradle step consumes the copy, not `deps/build/...`.
+      - name: Cache native prebuilts
+        id: cache-native
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps/build/rclone/rclone.aar
+            src/android/app/libs/rclone.aar
+            src/android/app/src/main/assets/alpine-minirootfs.tar
+            src/android/app/src/main/assets/proot-aarch64
+            src/android/app/src/main/jniLibs
+          key: native-v1-${{ hashFiles('deps/**', 'scripts/prepare_android_sandbox.sh') }}
+
       - name: Go toolchain
+        if: steps.cache-native.outputs.cache-hit != 'true'
         uses: actions/setup-go@v5
         with:
           go-version: '1.24'
-          cache: false
+          cache: true
+          cache-dependency-path: deps/rclone-mobile/**/go.sum
 
       - name: Native deps — proot + loaders
+        if: steps.cache-native.outputs.cache-hit != 'true'
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           bash deps/build_proot.sh
@@ -69,11 +119,13 @@ jobs:
           ls -l src/android/app/src/main/jniLibs/arm64-v8a/ || true
 
       - name: Native deps — Alpine rootfs asset
+        if: steps.cache-native.outputs.cache-hit != 'true'
         run: |
           bash scripts/prepare_android_sandbox.sh
           ls -l src/android/app/src/main/assets/ | grep -iE 'alpine|rootfs' || true
 
       - name: Native deps — rclone via gomobile
+        if: steps.cache-native.outputs.cache-hit != 'true'
         run: |
           export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/28.0.13004108"
           export PATH="$PATH:$(go env GOPATH)/bin"
@@ -84,25 +136,20 @@ jobs:
           cp deps/build/rclone/rclone.aar src/android/app/libs/
           ls -l src/android/app/libs/
 
-      # The release variant is signed with the project's own "debug"
-      # signingConfig, which reads ~/.android/debug.keystore. AGP GENERATES that
-      # file when it is missing, with a fresh key — so without this step every
-      # run produced an APK with a different signing identity, and installing
-      # run N+1 over run N failed with INSTALL_FAILED_UPDATE_INCOMPATIBLE. A
-      # fixed keystore makes successive builds upgrade-in-place.
-      #
-      # Kept in a repository secret rather than committed: a debug key is not a
-      # credential, but a public one would let anyone sign an APK that this
-      # fork's users could install over a real build.
-      # AGP's built-in "debug" signingConfig locates its keystore through
-      # ANDROID_USER_HOME / ANDROID_SDK_HOME when either is set, falling back to
-      # $HOME/.android. Writing only to $HOME made the restore a no-op: the file
-      # was there, AGP looked elsewhere, found nothing, and generated a fresh
-      # keystore — so build N+1 still could not install over build N.
-      #
-      # Write to every candidate location (idempotent, harmless when a variable
-      # is unset) and print the fingerprints so the next run proves which one
-      # AGP actually used instead of guessing.
+      - name: Native prebuilts restored from cache
+        if: steps.cache-native.outputs.cache-hit == 'true'
+        run: |
+          echo "cache hit: skipping proot / rootfs / gomobile (≈230 s saved)"
+          ls -l src/android/app/libs/ || true
+          ls -l src/android/app/src/main/jniLibs/arm64-v8a/ || true
+
+      # The release variant is signed with MINIS_SIGNING_STORE_FILE. AGP
+      # GENERATES a fresh keystore when it cannot find one, and it locates the
+      # file through ANDROID_USER_HOME / ANDROID_SDK_HOME when either is set,
+      # falling back to $HOME/.android — writing only to $HOME made an earlier
+      # restore a no-op (three builds, three different digests). Write to every
+      # candidate location and print the fingerprint so the log proves which
+      # key was used instead of leaving it to inference.
       - name: Restore stable debug keystore
         env:
           KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
@@ -111,11 +158,6 @@ jobs:
             echo "::error::DEBUG_KEYSTORE_B64 secret is missing; builds would not share a signing identity"
             exit 1
           fi
-          echo "HOME=$HOME"
-          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
-          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
-          echo "ANDROID_USER_HOME=${ANDROID_USER_HOME:-<unset>}"
-          echo "ANDROID_SDK_HOME=${ANDROID_SDK_HOME:-<unset>}"
           for dir in \
               "$HOME/.android" \
               "${ANDROID_USER_HOME:-$HOME/.android}" \
@@ -130,17 +172,44 @@ jobs:
           keytool -exportcert -keystore "$HOME/.android/debug.keystore" \
             -storepass android -alias androiddebugkey \
             | keytool -printcert | grep SHA256
-          # AGP's built-in debug config does not reliably resolve to the file
-          # above on a runner (three builds, three different digests). Point the
-          # build at this exact file instead of letting it guess.
           echo "MINIS_SIGNING_STORE_FILE=$HOME/.android/debug.keystore" >> $GITHUB_ENV
+
+      # ~/.gradle/caches is the dependency + transform cache; one key per
+      # build-script hash means a Kotlin-only change restores it exactly and
+      # never re-resolves a single artifact.
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+            ~/.gradle/build-cache
+          key: gradle-v1-${{ runner.os }}-${{ hashFiles('src/android/**/*.gradle.kts', 'src/android/gradle/wrapper/gradle-wrapper.properties') }}-${{ github.sha }}
+          restore-keys: |
+            gradle-v1-${{ runner.os }}-${{ hashFiles('src/android/**/*.gradle.kts', 'src/android/gradle/wrapper/gradle-wrapper.properties') }}-
+            gradle-v1-${{ runner.os }}-
+
+      # externalNativeBuild stages CMake under app/.cxx, NOT under ~/.gradle,
+      # so the Gradle cache above does not cover pty_bridge / crash_handler /
+      # jieba_jni. Ninja reuses the object files and only relinks when a
+      # Kotlin-only change leaves the C++ inputs untouched.
+      - name: Cache CMake NDK cxx
+        uses: actions/cache@v4
+        with:
+          path: src/android/app/.cxx
+          key: cxx-v1-${{ hashFiles('src/android/app/src/main/cpp/**', 'src/android/app/build.gradle.kts') }}
+          restore-keys: |
+            cxx-v1-
 
       - name: Gradle assembleRelease
         working-directory: src/android
         run: |
           chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace \
-            -Dorg.gradle.jvmargs=-Xmx4g
+          ./gradlew :app:assembleRelease \
+            --build-cache --parallel --no-daemon --stacktrace \
+            -Dorg.gradle.caching=true \
+            -Dorg.gradle.vfs.watch=false \
+            -Dorg.gradle.jvmargs="-Xmx4g -XX:+UseParallelGC"
 
       - name: Locate APK
         id: apk
@@ -148,35 +217,31 @@ jobs:
           APK=$(find src/android/app/build/outputs/apk/release -name '*.apk' | head -1)
           test -n "$APK" || { echo "no APK produced"; find src/android/app/build/outputs -maxdepth 3; exit 1; }
           echo "path=$APK" >> $GITHUB_OUTPUT
-          cp "$APK" "Minis-1.15-hark-md-parse-tailcap.apk"
-          ls -lh "Minis-1.15-hark-md-parse-tailcap.apk"
-          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "Minis-1.15-hark-md-parse-tailcap.apk" \
+          cp "$APK" "Minis-1.15-hark.apk"
+          ls -lh "Minis-1.15-hark.apk"
+          "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging "Minis-1.15-hark.apk" \
             | grep -E "^package:|sdkVersion|targetSdkVersion|application-label" || true
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: minis-apk
-          path: Minis-1.15-hark-md-parse-tailcap.apk
+          path: Minis-1.15-hark.apk
           retention-days: 14
 
       - name: Attach to a Release (anonymous download)
         if: success()
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: hark-md-parse-tailcap-build${{ github.run_number }}
-          name: Minis 1.15 + md-parse-tailcap (build ${{ github.run_number }})
+          tag_name: hark-build${{ github.run_number }}
+          name: Minis 1.15 + hark (build ${{ github.run_number }})
           draft: false
           prerelease: true
           body: |
-            Built from branch `android-md-parse-tailcap` at ${{ github.sha }}.
+            Built from `${{ github.ref_name }}` at `${{ github.sha }}`.
 
-            Single change vs upstream main: the streaming markdown live tail is
-            capped (24 000 chars / 512 lines) and rendered preformatted while
-            live, instead of being re-parsed in full on every throttle tick.
-            See HARK-REVIEW.md in this branch.
-
-            `applicationId com.openminis.app`, signed with the project's own
-            debug signing config — installs as a separate app from a repackaged
-            distribution, and keeps its own data directory.
-          files: Minis-1.15-hark-md-parse-tailcap.apk
+            Android-only fork build. Installable over a previous build of this
+            fork without uninstalling (the signing key is pinned), but separate
+            from any other Minis distribution: `applicationId com.openminis.app`,
+            own data directory.
+          files: Minis-1.15-hark.apk

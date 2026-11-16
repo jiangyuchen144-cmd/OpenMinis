@@ -2523,6 +2523,4 @@
     <string name="chat_menu_top_up_failed">沒有可開啟連結的應用程式</string>
 
     <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
-    <string name="onboarding_gate_title">欢迎</string>
-    <string name="onboarding_gate_skip">跳过</string>
 </resources>

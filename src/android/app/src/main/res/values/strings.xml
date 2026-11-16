@@ -2734,6 +2734,4 @@
     <string name="chat_menu_top_up_failed">No app available to open the link</string>
 
     <!-- [T-android-onboarding-gate] First-launch guide: placeholder step. -->
-    <string name="onboarding_gate_title">Welcome</string>
-    <string name="onboarding_gate_skip">Skip</string>
 </resources>
