@@ -5,292 +5,275 @@ import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.net.Uri
 import android.provider.OpenableColumns
-import java.io.File
-import androidx.core.content.ContextCompat
-import androidx.compose.foundation.Image
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.graphics.layer.drawLayer
-import androidx.compose.ui.graphics.rememberGraphicsLayer
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.scrollBy
-import androidx.compose.foundation.gestures.verticalDrag
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.material.icons.filled.AutoAwesome
-import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.Compress
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.VerticalAlignTop
-import androidx.compose.material.icons.filled.Schedule
-import androidx.compose.material.icons.filled.AudioFile
-import androidx.compose.material.icons.filled.FolderZip
-import androidx.compose.material.icons.filled.PictureAsPdf
-import androidx.compose.material.icons.filled.VideoFile
-import androidx.compose.material.icons.automirrored.filled.Article
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.conflate
-import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.filterNotNull
-import kotlinx.coroutines.flow.sample
-import kotlinx.coroutines.flow.collectLatest
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import androidx.compose.runtime.withFrameNanos
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.verticalDrag
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.automirrored.filled.Article
+import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
 import androidx.compose.material.icons.automirrored.filled.InsertDriveFile
+import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.automirrored.filled.VolumeOff
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AccountTree
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AppShortcut
+import androidx.compose.material.icons.filled.ArrowCircleDown
 import androidx.compose.material.icons.filled.ArrowCircleUp
 import androidx.compose.material.icons.filled.ArrowUpward
 import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.AudioFile
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Block
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.DataUsage
-import androidx.compose.material.icons.filled.Description
-import androidx.compose.material.icons.filled.Error
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.PhotoLibrary
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.CloseFullscreen
-import androidx.compose.material.icons.filled.Info
-import androidx.compose.material.icons.filled.Lightbulb
-import androidx.compose.material.icons.filled.Psychology
-import androidx.compose.material.icons.filled.Stop
-import androidx.compose.material.icons.filled.StopCircle
-import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Compress
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.DataUsage
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.EditNote
+import androidx.compose.material.icons.filled.Error
+import androidx.compose.material.icons.filled.Extension
+import androidx.compose.material.icons.filled.FolderZip
+import androidx.compose.material.icons.filled.Image
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
-import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.filled.PhotoLibrary
+import androidx.compose.material.icons.filled.PictureAsPdf
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.RadioButtonChecked
 import androidx.compose.material.icons.filled.RadioButtonUnchecked
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.ripple
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Switch
-import com.openminis.app.ui.settings.SettingsSwitch
-import com.openminis.app.BuildConfig
-import com.openminis.app.R
-import com.openminis.app.data.FileMentionIndex
-import com.openminis.app.logging.AppLogger
-import com.openminis.app.ui.components.MinisAlertDialog
-import com.openminis.app.ui.components.MinisMenu
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material.icons.filled.SkipPrevious
+import androidx.compose.material.icons.filled.Stop
+import androidx.compose.material.icons.filled.StopCircle
+import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.VerticalAlignTop
+import androidx.compose.material.icons.filled.VideoFile
+import androidx.compose.material.icons.outlined.AccountBalanceWallet
 import androidx.compose.material.icons.outlined.BugReport
-import androidx.compose.material.icons.outlined.History
 import androidx.compose.material.icons.outlined.CloseFullscreen
-import androidx.compose.material.icons.outlined.Tag
-import androidx.compose.material.icons.outlined.Psychology
-import androidx.compose.material.icons.outlined.Handyman
+import androidx.compose.material.icons.outlined.Delete
 import androidx.compose.material.icons.outlined.Extension
 import androidx.compose.material.icons.outlined.Folder
+import androidx.compose.material.icons.outlined.Forum
+import androidx.compose.material.icons.outlined.Handyman
+import androidx.compose.material.icons.outlined.History
+import androidx.compose.material.icons.outlined.IosShare
 import androidx.compose.material.icons.outlined.Language
+import androidx.compose.material.icons.outlined.Psychology
+import androidx.compose.material.icons.outlined.Public
+import androidx.compose.material.icons.outlined.Tag
 import androidx.compose.material.icons.outlined.Terminal
-import androidx.compose.material.icons.outlined.Delete
-import com.openminis.app.ui.components.MinisIcons
-import com.openminis.app.ui.components.MenuItemIcon
-import com.openminis.app.ui.components.MinisMenuDivider
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Surface
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
-import androidx.compose.material3.LocalTextStyle
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.compositionLocalOf
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.produceState
-import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithContent
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.layout.onPlaced
-import androidx.compose.ui.layout.boundsInWindow
-import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.isShiftPressed
 import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.CompositingStrategy
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.nativeCanvas
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInWindow
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onPlaced
+import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.pluralStringResource
-import androidx.compose.ui.res.stringResource
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
-import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.isImeVisible
-import androidx.compose.foundation.layout.ime
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBars
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.material.icons.automirrored.filled.FormatListBulleted
-import androidx.compose.material.icons.filled.TextFields
-import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.res.pluralStringResource
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.PlatformTextStyle
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.LineHeightStyle
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.layout.IntrinsicSize
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.offset
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.material.icons.filled.Cancel
-import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Public
-import androidx.compose.material.icons.filled.SkipNext
-import androidx.compose.material.icons.filled.SkipPrevious
-import androidx.compose.material.icons.automirrored.filled.NoteAdd
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EditNote
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.ArrowCircleDown
-import androidx.compose.material.icons.filled.AccountTree
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.ui.platform.LocalClipboardManager
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
-import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
-import com.openminis.app.offload.OffloadPermissionManager
 import com.mikepenz.markdown.compose.components.markdownComponents
 import com.mikepenz.markdown.m3.Markdown
 import com.mikepenz.markdown.m3.markdownColor
 import com.mikepenz.markdown.m3.markdownTypography
-import org.intellij.markdown.ast.ASTNode
-import org.intellij.markdown.ast.getTextInNode
+import com.openminis.app.BuildConfig
+import com.openminis.app.R
+import com.openminis.app.agent.jobs.AgentJobRegistry
+import com.openminis.app.data.FileMentionIndex
 import com.openminis.app.data.model.LLMModel
 import com.openminis.app.data.model.ModelEntry
 import com.openminis.app.data.model.ModelGroup
@@ -298,14 +281,34 @@ import com.openminis.app.data.model.ProviderConfig
 import com.openminis.app.data.model.ProviderType
 import com.openminis.app.data.model.RoutingStrategy
 import com.openminis.app.data.model.ThinkingLevel
-import com.openminis.app.agent.jobs.AgentJobRegistry
 import com.openminis.app.data.repository.ChatRepository
 import com.openminis.app.data.repository.MemoryRepository
 import com.openminis.app.data.repository.ProviderRepository
+import com.openminis.app.logging.AppLogger
+import com.openminis.app.offload.OffloadPermissionManager
+import com.openminis.app.quota.QuotaStore
 import com.openminis.app.ui.browser.BrowserSheet
-import com.openminis.app.ui.theme.ChatColors
+import com.openminis.app.ui.components.MenuItemIcon
+import com.openminis.app.ui.components.MinisAlertDialog
+import com.openminis.app.ui.components.MinisIcons
+import com.openminis.app.ui.components.MinisMenu
+import com.openminis.app.ui.components.MinisMenuDivider
 import com.openminis.app.ui.components.MinisTextButton
 import com.openminis.app.ui.components.safeLaunchPicker
+import com.openminis.app.ui.settings.SettingsSwitch
+import com.openminis.app.ui.theme.ChatColors
+import java.io.File
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.filterNotNull
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.sample
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.intellij.markdown.ast.ASTNode
+import org.intellij.markdown.ast.getTextInNode
 
 // iOS ChatColors equivalent
 internal val ToolCheckColor = Color(0xFF34C759) // iOS .green
@@ -3295,6 +3298,100 @@ fun ChatScreen(
                                     SpeedTierNavBadge(navSpeedTier)
                                 },
                             )
+
+                            // [T-android-balance-menu] API balance + top up, right
+                            // under the model rows it belongs with.
+                            //
+                            // The instance is resolved through the SAME chain the
+                            // rest of this screen uses for provider identity:
+                            // activeEntryId -> ModelEntry -> providerInstanceId ->
+                            // ProviderInstance. Reading the flow via .value keeps
+                            // this off the recomposition path: the menu is an
+                            // overlay the user opened, not a value that must react
+                            // mid-turn.
+                            run {
+                                val config = providerRepository.config.value
+                                val inst = viewModel.activeEntryId.value
+                                    ?.let { id -> config.modelEntries.find { it.id == id } }
+                                    ?.providerInstanceId
+                                    ?.let { providerRepository.instance(it) }
+                                if (inst != null) {
+                                    val quotaState by QuotaStore.state.collectAsState()
+                                    val scope = rememberCoroutineScope()
+                                    val context = LocalContext.current
+                                    // customBaseURL, not the type: a custom
+                                    // OpenAI-compatible endpoint IS type openAI,
+                                    // so DeepSeek and Zhipu would both match
+                                    // OpenAI's billing page by type.
+                                    val topUpUrl = ProviderTopUp.urlFor(
+                                        inst.customBaseURL,
+                                        inst.label,
+                                    )
+                                    // Cheap "is there anything to show" probe: the
+                                    // descriptor tells us whether this instance can
+                                    // report quota at all, so a provider that never
+                                    // can (a local gateway, an unsupported kind) does
+                                    // not grow a permanent em-dash row.
+                                    val display = quotaState.display(QuotaStore.descriptor(inst))
+                                    val applicable = display !is com.openminis.app.quota.QuotaInstanceDisplay.Hidden &&
+                                        display !is com.openminis.app.quota.QuotaInstanceDisplay.Unsupported
+                                    if (applicable) {
+                                        LaunchedEffect(inst.id) {
+                                            QuotaStore.refreshIfDue(inst.id, "chat_menu")
+                                        }
+                                        ChatBalanceMenuItem(
+                                            a11yLabel = stringResource(R.string.chat_menu_balance),
+                                            refreshing = quotaState.isRefreshing(inst.id),
+                                            topUpText = topUpUrl?.let {
+                                                stringResource(R.string.chat_menu_top_up)
+                                            },
+                                            onRefresh = {
+                                                scope.launch {
+                                                    QuotaStore.refresh(
+                                                        inst.id,
+                                                        forced = true,
+                                                        reason = "manual",
+                                                    )
+                                                }
+                                            },
+                                            onTopUp = {
+                                                showChatMenu = false
+                                                if (topUpUrl != null &&
+                                                    !openExternalUrl(context, topUpUrl)
+                                                ) {
+                                                    Toast.makeText(
+                                                        context,
+                                                        context.getString(R.string.chat_menu_top_up_failed),
+                                                        Toast.LENGTH_SHORT,
+                                                    ).show()
+                                                }
+                                            },
+                                            leadingIcon = {
+                                                Icon(
+                                                    Icons.Outlined.AccountBalanceWallet,
+                                                    contentDescription = null,
+                                                )
+                                            },
+                                            balanceContent = {
+                                                // The project's own badge: it resolves
+                                                // the headline pool, formats the figure
+                                                // and colours it by status.
+                                                if (quotaState.headline(inst.id) != null) {
+                                                    com.openminis.app.ui.quota.QuotaSectionHeaderBadge(
+                                                        instanceId = inst.id,
+                                                        onTap = null,
+                                                    )
+                                                } else {
+                                                    Text(
+                                                        "—",
+                                                        style = MaterialTheme.typography.bodyLarge,
+                                                    )
+                                                }
+                                            },
+                                        )
+                                    }
+                                }
+                            }
                             MinisMenuDivider()
                             // Clear Chat (iOS parity, red)
                             DropdownMenuItem(

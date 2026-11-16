@@ -2526,4 +2526,9 @@
     <string name="chat_title_done">回复完成</string>
     <string name="chat_menu_switch_model">切换模型</string>
     <string name="chat_menu_thinking_level">思考等级</string>
+
+    <!-- [T-android-balance-menu] ⋮ 菜单：API 余额与充值。 -->
+    <string name="chat_menu_balance">API 余额</string>
+    <string name="chat_menu_top_up">充值</string>
+    <string name="chat_menu_top_up_failed">没有可打开链接的应用</string>
 </resources>

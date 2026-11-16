@@ -2727,4 +2727,9 @@
     <string name="chat_title_done">Reply finished</string>
     <string name="chat_menu_switch_model">Switch model</string>
     <string name="chat_menu_thinking_level">Thinking level</string>
+
+    <!-- [T-android-balance-menu] ⋮ menu: API balance row and its top-up pill. -->
+    <string name="chat_menu_balance">API balance</string>
+    <string name="chat_menu_top_up">Top up</string>
+    <string name="chat_menu_top_up_failed">No app available to open the link</string>
 </resources>

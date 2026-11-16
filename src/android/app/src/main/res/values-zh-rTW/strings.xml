@@ -2516,4 +2516,9 @@
     <string name="chat_title_done">回覆完成</string>
     <string name="chat_menu_switch_model">切換模型</string>
     <string name="chat_menu_thinking_level">思考等級</string>
+
+    <!-- [T-android-balance-menu] ⋮ 選單：API 餘額與儲值。 -->
+    <string name="chat_menu_balance">API 餘額</string>
+    <string name="chat_menu_top_up">儲值</string>
+    <string name="chat_menu_top_up_failed">沒有可開啟連結的應用程式</string>
 </resources>
