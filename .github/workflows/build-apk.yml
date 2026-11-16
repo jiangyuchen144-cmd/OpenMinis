@@ -94,6 +94,15 @@ jobs:
       # Kept in a repository secret rather than committed: a debug key is not a
       # credential, but a public one would let anyone sign an APK that this
       # fork's users could install over a real build.
+      # AGP's built-in "debug" signingConfig locates its keystore through
+      # ANDROID_USER_HOME / ANDROID_SDK_HOME when either is set, falling back to
+      # $HOME/.android. Writing only to $HOME made the restore a no-op: the file
+      # was there, AGP looked elsewhere, found nothing, and generated a fresh
+      # keystore — so build N+1 still could not install over build N.
+      #
+      # Write to every candidate location (idempotent, harmless when a variable
+      # is unset) and print the fingerprints so the next run proves which one
+      # AGP actually used instead of guessing.
       - name: Restore stable debug keystore
         env:
           KEYSTORE_B64: ${{ secrets.DEBUG_KEYSTORE_B64 }}
@@ -102,9 +111,25 @@ jobs:
             echo "::error::DEBUG_KEYSTORE_B64 secret is missing; builds would not share a signing identity"
             exit 1
           fi
-          mkdir -p "$HOME/.android"
-          printf '%s' "$KEYSTORE_B64" | base64 -d > "$HOME/.android/debug.keystore"
-          ls -l "$HOME/.android/debug.keystore"
+          echo "HOME=$HOME"
+          echo "ANDROID_HOME=${ANDROID_HOME:-<unset>}"
+          echo "ANDROID_SDK_ROOT=${ANDROID_SDK_ROOT:-<unset>}"
+          echo "ANDROID_USER_HOME=${ANDROID_USER_HOME:-<unset>}"
+          echo "ANDROID_SDK_HOME=${ANDROID_SDK_HOME:-<unset>}"
+          for dir in \
+              "$HOME/.android" \
+              "${ANDROID_USER_HOME:-$HOME/.android}" \
+              "${ANDROID_SDK_HOME:+$ANDROID_SDK_HOME/.android}" \
+              "${ANDROID_SDK_ROOT:+$ANDROID_SDK_ROOT/.android}" \
+              "${ANDROID_HOME:+$ANDROID_HOME/.android}" ; do
+            [ -n "$dir" ] || continue
+            mkdir -p "$dir"
+            printf '%s' "$KEYSTORE_B64" | base64 -d > "$dir/debug.keystore"
+            echo "wrote $dir/debug.keystore"
+          done
+          keytool -exportcert -keystore "$HOME/.android/debug.keystore" \
+            -storepass android -alias androiddebugkey \
+            | keytool -printcert | grep SHA256
 
       - name: Gradle assembleRelease
         working-directory: src/android
