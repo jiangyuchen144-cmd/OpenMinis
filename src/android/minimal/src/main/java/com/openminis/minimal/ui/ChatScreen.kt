@@ -12,6 +12,7 @@ package com.openminis.minimal.ui
 // back down), and Stop cancels the HTTP call rather than merely hiding the
 // spinner.
 
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -37,8 +38,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.ArrowUpward
-import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Surface
@@ -54,6 +53,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.TextStyle
@@ -249,15 +253,50 @@ private fun Composer(
                 onClick = { if (streaming) onStop() else onSend() },
                 enabled = streaming || draft.isNotBlank(),
             ) {
-                Icon(
-                    if (streaming) Icons.Default.Stop else Icons.Default.ArrowUpward,
-                    contentDescription = stringResource(
-                        if (streaming) R.string.chat_stop else R.string.chat_send,
-                    ),
-                    tint = Color.White,
-                    modifier = Modifier.size(18.dp),
-                )
+                // Drawn rather than imported: the two glyphs this needs live in
+                // material-icons-extended, and shipping that artifact for two
+                // shapes costs ~10 MB in a build with minification off.
+                if (streaming) StopGlyph(Modifier.size(14.dp), Color.White)
+                else SendGlyph(Modifier.size(17.dp), Color.White)
             }
         }
+    }
+}
+
+/** A filled square: "stop", at a weight that reads at 14dp. */
+@Composable
+private fun StopGlyph(modifier: Modifier, tint: Color) {
+    Canvas(modifier) {
+        drawRoundRect(
+            color = tint,
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.width * 0.18f),
+        )
+    }
+}
+
+/** An upward arrow: "send", matching the composer's own gesture metaphor. */
+@Composable
+private fun SendGlyph(modifier: Modifier, tint: Color) {
+    Canvas(modifier) {
+        val w = size.width
+        val h = size.height
+        val stroke = w * 0.14f
+        drawLine(
+            color = tint,
+            start = Offset(w * 0.5f, h * 0.92f),
+            end = Offset(w * 0.5f, h * 0.12f),
+            strokeWidth = stroke,
+            cap = StrokeCap.Round,
+        )
+        val head = Path().apply {
+            moveTo(w * 0.18f, h * 0.44f)
+            lineTo(w * 0.5f, h * 0.10f)
+            lineTo(w * 0.82f, h * 0.44f)
+        }
+        drawPath(
+            head,
+            tint,
+            style = Stroke(width = stroke, cap = StrokeCap.Round, join = StrokeJoin.Round),
+        )
     }
 }

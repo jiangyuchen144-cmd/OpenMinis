@@ -121,7 +121,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (failed) {
             messages.removeAll { it.id == assistantId }
             errorText = error
-        } else if (reply.isEmpty()) {
+        } else if (reply.isNullOrEmpty()) {
             // Cancelled, or the vendor sent nothing. An empty assistant bubble
             // is visual noise; drop it.
             messages.removeAll { it.id == assistantId }
