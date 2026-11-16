@@ -146,6 +146,11 @@ fun AddProviderScreen(
     when (step) {
         AddProviderStep.CHOOSE_TYPE -> ChooseProviderScreen(
             onBack = handleBack,
+            onSelectCredential = { type, credential ->
+                selectedType = type
+                selectedCredential = credential
+                step = AddProviderStep.CONFIGURE
+            },
             onSelect = { type ->
                 selectedType = type
                 val creds = availableCredentials(type)
@@ -222,6 +227,10 @@ private fun availableCredentials(type: ProviderType): List<ProviderCredential> {
 private fun ChooseProviderScreen(
     onBack: () -> Unit,
     onSelect: (ProviderType) -> Unit,
+    // [T-android-deepseek-only] Jump straight to the form with a credential
+    // already chosen, skipping the credential picker. Used by the one DeepSeek
+    // row: its only sane credential is an API key.
+    onSelectCredential: (ProviderType, ProviderCredential) -> Unit,
     onSelectVoiceTemplate: (com.openminis.app.data.model.VoiceProviderTemplate) -> Unit = {},
 ) {
     SettingsScaffold(
@@ -260,7 +269,14 @@ private fun ChooseProviderScreen(
                 title = stringResource(R.string.add_provider_deepseek_account),
                 subtitle = stringResource(R.string.add_provider_deepseek_account_subtitle),
                 icon = Icons.Outlined.Key,
-                onClick = { onSelect(ProviderType.openAI) },
+                onClick = {
+                    // Straight to the form with the API-key credential already
+                    // chosen. The credential picker would offer "OAuth — sign in
+                    // with OpenAI Codex", which is the OpenAI flow: it has
+                    // nothing to do with DeepSeek and would only invite the user
+                    // down a path that cannot work here.
+                    onSelectCredential(ProviderType.openAI, ProviderCredential.apiKey)
+                },
                 showDivider = false,
             )
         }
