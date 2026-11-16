@@ -2534,7 +2534,7 @@
 
     <!-- [T-android-onboarding-gate] 首启引导：占位页。 -->
     <string name="onboarding_v2_headline">为解决问题的人打造的 AI</string>
-    <string name="onboarding_v2_continue_google">使用 Google 继续</string>
+    <string name="onboarding_v2_deepseek_login">使用 DeepSeek 登录</string>
     <string name="onboarding_v2_or">或</string>
-    <string name="onboarding_v2_enter_email">输入您的电子邮箱</string>
+    <string name="onboarding_v2_i_have_api">我有 API</string>
 </resources>

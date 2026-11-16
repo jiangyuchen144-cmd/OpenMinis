@@ -87,6 +87,14 @@ import kotlinx.coroutines.flow.first
 private val EmphasizedDecelerate = CubicBezierEasing(0.05f, 0.7f, 0.1f, 1.0f)
 private val EmphasizedAccelerate = CubicBezierEasing(0.3f, 0.0f, 0.8f, 0.15f)
 
+/**
+ * [T-android-onboarding-v2] Where "sign in with DeepSeek" sends the user.
+ *
+ * The console, not the API host: keys are issued at platform.deepseek.com, and
+ * `api.deepseek.com` serves JSON to machines, so opening it shows a naked 404.
+ */
+private const val DEEPSEEK_CONSOLE_URL = "https://platform.deepseek.com"
+
 object Routes {
     const val SESSION_LIST = "sessions"
     const val CHAT = "chat/{sessionId}"
@@ -377,6 +385,12 @@ fun AppNavigation(
     val initialJumpDone = androidx.compose.runtime.saveable.rememberSaveable {
         androidx.compose.runtime.mutableStateOf(false)
     }
+    // See the startDestination note below: this is what pins the guide to the
+    // graph's start for the session, so finishing it is a pure navigation and
+    // never a graph rebuild.
+    val guideIsStartDestination = androidx.compose.runtime.saveable.rememberSaveable {
+        onboardingState == 1
+    }
     // Keyed on onboardingState, not Unit: while the guide is up the NavHost has
     // not navigated anywhere yet, and after it finishes this effect must run
     // again to restore "reopen my last conversation on launch". A Unit key
@@ -585,7 +599,12 @@ fun AppNavigation(
             Routes.chat(htmlShortcut.sessionId)
         }
         quickActionStart != null -> quickActionStart
-        else -> if (onboardingState == 1) Routes.ONBOARDING else Routes.SESSION_LIST
+        // The guide is the start destination for the WHOLE session, frozen at
+        // first composition. Deriving it from the live flag instead would swap
+        // the graph out mid-navigation the moment the user finishes the guide,
+        // and a graph swap during a two-step navigate (list, then add-provider)
+        // is exactly the kind of thing that silently loses the second step.
+        else -> if (guideIsStartDestination) Routes.ONBOARDING else Routes.SESSION_LIST
     }
     NavHost(
         navController = navController,
@@ -644,30 +663,54 @@ fun AppNavigation(
             ) + fadeOut(animationSpec = tween(200, easing = EmphasizedAccelerate))
         },
     ) {
-        // [T-android-onboarding-v2] The welcome screen. Either pill lands here,
-        // writes the flag and replaces itself with the sessions list, which is
-        // where the real setup steps live.
+        // [T-android-onboarding-v2] The welcome screen.
+        //
+        // Both doors do the same bookkeeping — write the flag, claim the launch
+        // resolver, drop the guide off the back stack — and differ only in where
+        // they land. Claiming [initialJumpDone] matters: without it the resolver
+        // re-runs the moment the gate flips, and on a first launch Auto mode
+        // then either resumes a stale session or opens an empty draft, burying
+        // the setup steps the user was just sent to follow.
         composable(Routes.ONBOARDING) {
+            val finishGuide: () -> Unit = {
+                com.openminis.app.ui.onboarding.OnboardingPrefs.markCompleted(context)
+                initialJumpDone.value = true
+                onboardingState = 2
+            }
             com.openminis.app.ui.onboarding.OnboardingGateScreen(
-                onFinish = {
-                    com.openminis.app.ui.onboarding.OnboardingPrefs.markCompleted(context)
-                    // [T-android-onboarding-v2] Finishing the guide lands on the
-                    // session list and STAYS there. Without this, flipping the
-                    // gate to 2 re-runs the launch resolver, which applies the
-                    // user's launch mode to a first launch — Auto then resumes
-                    // the last session, or (when that one is stale) opens an
-                    // empty draft with the keyboard up. Both bury the list the
-                    // guide is supposed to hand over to: it is the list that
-                    // carries "add a provider → pick a model → start". Claiming
-                    // the one-shot flag here means this launch skips the
-                    // resolver entirely; the next cold start behaves normally.
-                    initialJumpDone.value = true
-                    onboardingState = 2
+                onSignInWithDeepSeek = {
+                    finishGuide()
+                    // A redirect, not a login: this build completes no OAuth
+                    // handshake, so it opens the console where keys are actually
+                    // issued and lets the user come back with one. runCatching
+                    // because a device with no browser must still reach the list
+                    // rather than sit on a dead button.
+                    runCatching {
+                        context.startActivity(
+                            android.content.Intent(
+                                android.content.Intent.ACTION_VIEW,
+                                android.net.Uri.parse(DEEPSEEK_CONSOLE_URL),
+                            ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK),
+                        )
+                    }
                     if (navController.currentDestination?.route != Routes.SESSION_LIST) {
                         navController.navigate(Routes.SESSION_LIST) {
                             popUpTo(Routes.ONBOARDING) { inclusive = true }
                         }
                     }
+                },
+                onEnterApiKey = {
+                    finishGuide()
+                    // Two steps, in this order: the list becomes the parent so
+                    // Back from the form returns to it, and the provider form is
+                    // the existing AddProviderScreen — no new screen, no new
+                    // route.
+                    if (navController.currentDestination?.route != Routes.SESSION_LIST) {
+                        navController.navigate(Routes.SESSION_LIST) {
+                            popUpTo(Routes.ONBOARDING) { inclusive = true }
+                        }
+                    }
+                    navController.safeNavigate(Routes.ADD_PROVIDER)
                 },
             )
         }

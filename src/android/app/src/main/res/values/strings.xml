@@ -2735,7 +2735,7 @@
 
     <!-- [T-android-onboarding-gate] First-launch guide: placeholder step. -->
     <string name="onboarding_v2_headline">AI built for people who solve problems</string>
-    <string name="onboarding_v2_continue_google">Continue with Google</string>
+    <string name="onboarding_v2_deepseek_login">Sign in with DeepSeek</string>
     <string name="onboarding_v2_or">or</string>
-    <string name="onboarding_v2_enter_email">Enter your email</string>
+    <string name="onboarding_v2_i_have_api">I have an API key</string>
 </resources>

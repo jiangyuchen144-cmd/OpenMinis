@@ -34,7 +34,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -105,18 +104,22 @@ private val MutedText = Color(0xFF7D7B74)
 /**
  * [T-android-onboarding-v2] The welcome screen.
  *
- * Both pills call [onFinish]. Neither authenticates anything: this build has no
- * Google sign-in and no email sign-up, and the guide's only job is to hand the
- * user to the sessions list, which already carries the real setup steps
- * (add a provider → pick a model → start talking) and the restore-from-backup
- * entry. The labels are kept because the user asked for this layout
- * specifically — but if they ever read as a promise the app does not keep,
- * changing the two strings is the whole fix.
+ * Two doors out, and neither one authenticates anything by itself:
+ *  - [onSignInWithDeepSeek] sends the user to DeepSeek's own console in a
+ *    browser, so a key can be obtained where keys actually come from. It is a
+ *    redirect, not a login: this build has no OAuth handshake to complete.
+ *  - [onEnterApiKey] goes straight to the add-provider screen for someone who
+ *    already has a key.
+ *
+ * Both finish the guide on the way out — seeing the welcome screen once is the
+ * whole point of it, and a user who followed either door has understood what
+ * the app needs from them.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun OnboardingGateScreen(
-    onFinish: () -> Unit,
+    onSignInWithDeepSeek: () -> Unit,
+    onEnterApiKey: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -166,7 +169,9 @@ fun OnboardingGateScreen(
 
         Spacer(modifier = Modifier.weight(1.15f))
 
-        // Primary pill: solid ink.
+        // Primary pill: solid ink. No brand mark beside the label — there is no
+        // DeepSeek artwork in the tree, and inventing one (or shipping a new
+        // bitmap for a single line of text) is worse than plain type.
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -174,17 +179,15 @@ fun OnboardingGateScreen(
             shape = RoundedCornerShape(50),
             color = InkBlack,
             contentColor = Color.White,
-            onClick = onFinish,
+            onClick = onSignInWithDeepSeek,
         ) {
             Row(
                 modifier = Modifier.fillMaxSize(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center,
             ) {
-                GoogleGIcon(modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.size(10.dp))
                 Text(
-                    text = stringResource(R.string.onboarding_v2_continue_google),
+                    text = stringResource(R.string.onboarding_v2_deepseek_login),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Medium,
                     color = Color.White,
@@ -217,7 +220,8 @@ fun OnboardingGateScreen(
             )
         }
 
-        // Secondary pill: outlined on warm white.
+        // Secondary pill: outlined on warm white. For someone who already holds
+        // a key and wants the form, not the console.
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
@@ -225,14 +229,14 @@ fun OnboardingGateScreen(
             shape = RoundedCornerShape(50),
             color = Color.White.copy(alpha = 0.65f),
             border = BorderStroke(1.dp, WarmBorder),
-            onClick = onFinish,
+            onClick = onEnterApiKey,
         ) {
             Box(
                 modifier = Modifier.fillMaxSize(),
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = stringResource(R.string.onboarding_v2_enter_email),
+                    text = stringResource(R.string.onboarding_v2_i_have_api),
                     fontSize = 16.sp,
                     fontWeight = FontWeight.Normal,
                     color = MutedText,
@@ -332,60 +336,6 @@ private fun ClaudeHeroIllustration(modifier: Modifier = Modifier) {
                 cap = StrokeCap.Round,
                 join = StrokeJoin.Round,
             ),
-        )
-    }
-}
-
-@Composable
-private fun GoogleGIcon(modifier: Modifier = Modifier) {
-    Canvas(modifier = modifier) {
-        val stroke = size.minDimension * 0.20f
-        val inset = stroke / 2f
-        val arcSize = Size(size.width - stroke, size.height - stroke)
-        val topLeft = Offset(inset, inset)
-
-        drawArc(
-            color = Color(0xFFEA4335),
-            startAngle = -145f,
-            sweepAngle = 105f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Butt),
-        )
-        drawArc(
-            color = Color(0xFFFBBC05),
-            startAngle = 145f,
-            sweepAngle = 70f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Butt),
-        )
-        drawArc(
-            color = Color(0xFF34A853),
-            startAngle = 45f,
-            sweepAngle = 100f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Butt),
-        )
-        drawArc(
-            color = Color(0xFF4285F4),
-            startAngle = -15f,
-            sweepAngle = 65f,
-            useCenter = false,
-            topLeft = topLeft,
-            size = arcSize,
-            style = Stroke(width = stroke, cap = StrokeCap.Butt),
-        )
-        drawLine(
-            color = Color(0xFF4285F4),
-            start = Offset(size.width * 0.52f, size.height * 0.50f),
-            end = Offset(size.width * 0.94f, size.height * 0.50f),
-            strokeWidth = stroke * 0.95f,
-            cap = StrokeCap.Butt,
         )
     }
 }
