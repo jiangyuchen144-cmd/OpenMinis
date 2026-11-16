@@ -651,10 +651,17 @@ fun AppNavigation(
             com.openminis.app.ui.onboarding.OnboardingGateScreen(
                 onFinish = {
                     com.openminis.app.ui.onboarding.OnboardingPrefs.markCompleted(context)
-                    // Changing startDestination makes NavHost rebuild its graph
-                    // and may already resettle on the list; navigating again
-                    // would then stack a second copy of it. Check first, so
-                    // either behaviour lands on one list, not two.
+                    // [T-android-onboarding-v2] Finishing the guide lands on the
+                    // session list and STAYS there. Without this, flipping the
+                    // gate to 2 re-runs the launch resolver, which applies the
+                    // user's launch mode to a first launch — Auto then resumes
+                    // the last session, or (when that one is stale) opens an
+                    // empty draft with the keyboard up. Both bury the list the
+                    // guide is supposed to hand over to: it is the list that
+                    // carries "add a provider → pick a model → start". Claiming
+                    // the one-shot flag here means this launch skips the
+                    // resolver entirely; the next cold start behaves normally.
+                    initialJumpDone.value = true
                     onboardingState = 2
                     if (navController.currentDestination?.route != Routes.SESSION_LIST) {
                         navController.navigate(Routes.SESSION_LIST) {
