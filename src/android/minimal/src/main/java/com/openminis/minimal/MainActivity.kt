@@ -115,10 +115,13 @@ private fun MinimalRoot() {
         androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-            com.openminis.minimal.data.MemoryStore.setSharedTree(ctx, uri)
+            val ok = com.openminis.minimal.data.MemoryStore.setSharedTree(ctx, uri)
             val st = com.openminis.minimal.data.MemoryStore.status(ctx)
-            importResult = if (st.files == 0) "这个文件夹里没有 .md 文件"
-                           else "已连接：${st.files} 个文件 · ${st.chars} 字"
+            importResult = when {
+                !ok -> "系统拒绝了这个文件夹的授权"
+                st.files == 0 -> "这个文件夹里没有 .md 文件"
+                else -> "已连接：${st.files} 个文件 · ${st.chars} 字"
+            }
             // The ViewModel caches the prompt for the life of the session; a new
             // folder must not silently apply mid-conversation.
             vm.reloadMemory()

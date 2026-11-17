@@ -50,6 +50,7 @@ object MemoryStore {
 
     private const val PREFS = "minimal"
     private const val KEY_TREE = "memory_tree_uri"
+    private const val KEY_WRITABLE = "memory_tree_writable"
 
     private val json = Json { ignoreUnknownKeys = true }
 
@@ -77,16 +78,53 @@ object MemoryStore {
         return uri
     }
 
-    fun setSharedTree(context: Context, uri: Uri) {
-        context.contentResolver.takePersistableUriPermission(
-            uri,
-            android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-        )
+    /**
+     * Takes a persistable grant on [uri] and remembers it.
+     *
+     * @return true when a grant was taken.
+     *
+     * Read-write first, then read-only. Not defensive coding for its own sake:
+     * the document provider decides which flags it will persist, and MIUI's file
+     * explorer — which is what the picker opens on this phone — grants read but
+     * refuses write. Asking for both and letting the exception escape meant the
+     * whole call failed, no URI was stored, and the settings screen went on
+     * saying "未导入" after the user had explicitly allowed the folder.
+     *
+     * Read-only is still useful: memory reads are the common case, and the app
+     * only needs write to append its own notes.
+     */
+    fun setSharedTree(context: Context, uri: Uri): Boolean {
+        val resolver = context.contentResolver
+        val readWrite = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or
+            android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        val readOnly = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+
+        val taken = runCatching { resolver.takePersistableUriPermission(uri, readWrite) }
+            .map { readWrite }
+            .recoverCatching {
+                Log.w(TAG, "read-write grant refused (${it.javaClass.simpleName}); trying read-only")
+                resolver.takePersistableUriPermission(uri, readOnly)
+                readOnly
+            }
+            .getOrNull()
+
+        if (taken == null) {
+            Log.e(TAG, "the provider refused a persistable grant for $uri")
+            return false
+        }
+
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
-            .edit().putString(KEY_TREE, uri.toString()).apply()
-        Log.i(TAG, "memory folder set to $uri")
+            .edit().putString(KEY_TREE, uri.toString())
+            .putBoolean(KEY_WRITABLE, taken == readWrite)
+            .apply()
+        Log.i(TAG, "memory folder set to $uri (write=${taken == readWrite})")
+        return true
     }
+
+    /** True when the grant allows appending our own notes into the shared folder. */
+    fun canWrite(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_WRITABLE, false)
 
     fun clearSharedTree(context: Context) {
         sharedTree(context)?.let { uri ->
