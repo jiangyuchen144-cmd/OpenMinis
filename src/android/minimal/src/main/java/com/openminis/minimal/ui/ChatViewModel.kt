@@ -33,8 +33,21 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
      * session takes effect on the next one, which is the honest behaviour — the
      * model should not silently change what it thinks it knows mid-answer.
      */
-    private val systemPrompt: String? = com.openminis.minimal.data.MemoryStore
+    private var systemPrompt: String? = com.openminis.minimal.data.MemoryStore
         .systemPrompt(app)
+
+    /**
+     * Re-reads memory after the folder changed.
+     *
+     * Called from the settings dialog rather than on a timer: memory changes when
+     * the user points the app at a different folder, which is a moment the app
+     * knows about. Applying it to a conversation already in progress would mean
+     * the model's knowledge changed between two messages for no reason the user
+     * could see.
+     */
+    fun reloadMemory() {
+        systemPrompt = com.openminis.minimal.data.MemoryStore.systemPrompt(getApplication())
+    }
 
     val messages = mutableStateListOf<Message>()
 

@@ -43,4 +43,6 @@
     <string name="settings_memory">记忆</string>
     <string name="settings_memory_empty">未导入</string>
     <string name="settings_memory_import">从文件夹导入…</string>
+    <string name="settings_memory_change">更换文件夹…</string>
+    <string name="settings_memory_unlink">断开</string>
 </resources>

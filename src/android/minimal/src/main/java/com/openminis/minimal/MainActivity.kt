@@ -115,10 +115,13 @@ private fun MinimalRoot() {
         androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
     ) { uri ->
         if (uri != null) {
-            importResult = com.openminis.minimal.data.MemoryImporter
-                .importTree(ctx, uri)
-                ?.let { "已导入 $it 个文件" }
-                ?: "导入失败"
+            com.openminis.minimal.data.MemoryStore.setSharedTree(ctx, uri)
+            val st = com.openminis.minimal.data.MemoryStore.status(ctx)
+            importResult = if (st.files == 0) "这个文件夹里没有 .md 文件"
+                           else "已连接：${st.files} 个文件 · ${st.chars} 字"
+            // The ViewModel caches the prompt for the life of the session; a new
+            // folder must not silently apply mid-conversation.
+            vm.reloadMemory()
             memoryVersion++
         }
     }
@@ -184,17 +187,24 @@ private fun MinimalRoot() {
 
     if (showSettings) {
         // memoryVersion is read here so the dialog recomposes after an import.
-        val memStats = remember(memoryVersion) {
-            com.openminis.minimal.data.MemoryStore.stats(ctx)
+        val mem = remember(memoryVersion) {
+            com.openminis.minimal.data.MemoryStore.status(ctx)
         }
         SettingsDialog(
             model = settings.model,
             hasKey = settings.hasKey,
-            memoryFiles = memStats.first,
-            memoryChars = memStats.second,
+            memoryShared = mem.shared,
+            memoryFiles = mem.files,
+            memoryChars = mem.chars,
             importResult = importResult,
             onModelChange = { settings.model = it },
             onImportMemory = { importLauncher.launch(null) },
+            onUnlinkMemory = {
+                com.openminis.minimal.data.MemoryStore.clearSharedTree(ctx)
+                vm.reloadMemory()
+                importResult = null
+                memoryVersion++
+            },
             onDismiss = { showSettings = false; importResult = null },
         )
     }
@@ -204,11 +214,13 @@ private fun MinimalRoot() {
 private fun SettingsDialog(
     model: String,
     hasKey: Boolean,
+    memoryShared: Boolean,
     memoryFiles: Int,
     memoryChars: Int,
     importResult: String?,
     onModelChange: (String) -> Unit,
     onImportMemory: () -> Unit,
+    onUnlinkMemory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -271,21 +283,40 @@ private fun SettingsDialog(
                     color = InkMuted,
                 )
                 Text(
-                    if (memoryFiles == 0) stringResource(R.string.settings_memory_empty)
-                    else "$memoryFiles 个文件 · $memoryChars 字",
+                    when {
+                        memoryShared && memoryFiles > 0 -> "共享中 · $memoryFiles 个文件 · $memoryChars 字"
+                        memoryShared -> "已连接，文件夹是空的"
+                        memoryFiles > 0 -> "仅本机 · $memoryFiles 个文件"
+                        else -> stringResource(R.string.settings_memory_empty)
+                    },
                     fontSize = 15.sp,
                     color = Ink,
                 )
                 Spacer(Modifier.height(6.dp))
-                TextButton(
-                    onClick = onImportMemory,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.settings_memory_import),
-                        fontSize = 14.sp,
-                        color = com.openminis.minimal.ui.Terracotta,
-                    )
+                Row {
+                    TextButton(
+                        onClick = onImportMemory,
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                    ) {
+                        Text(
+                            stringResource(if (memoryShared) R.string.settings_memory_change else R.string.settings_memory_import),
+                            fontSize = 14.sp,
+                            color = com.openminis.minimal.ui.Terracotta,
+                        )
+                    }
+                    if (memoryShared) {
+                        Spacer(Modifier.width(12.dp))
+                        TextButton(
+                            onClick = onUnlinkMemory,
+                            contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                        ) {
+                            Text(
+                                stringResource(R.string.settings_memory_unlink),
+                                fontSize = 14.sp,
+                                color = InkMuted,
+                            )
+                        }
+                    }
                 }
                 if (importResult != null) {
                     Text(importResult, fontSize = 12.sp, color = InkMuted)
