@@ -57,9 +57,29 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
+        // [T-minimal] An Intent may carry the key: `am start -n
+        // com.openminis.minimal/.MainActivity --es api_key sk-...`.
+        //
+        // This exists so a key can be installed without baking it into the APK
+        // (where anyone holding the file can read it) and without a debug build
+        // (whose only purpose would be to make run-as work once). It is a
+        // convenience for the person who owns the phone, nothing more — the
+        // typed field remains the normal path.
+        minimalApp.settings.let { s ->
+            intent?.getStringExtra(EXTRA_API_KEY)?.takeIf { it.isNotBlank() }?.let {
+                s.apiKey = it
+                s.onboarded = true
+            }
+        }
+
         setContent {
             MinimalTheme { MinimalRoot() }
         }
+    }
+
+    private companion object {
+        const val EXTRA_API_KEY = "api_key"
     }
 }
 
@@ -85,6 +105,23 @@ private fun MinimalRoot() {
     }
     var sessions by remember { mutableStateOf(store.list()) }
     var showSettings by remember { mutableStateOf(false) }
+    var memoryVersion by remember { mutableStateOf(0) }
+    var importResult by remember { mutableStateOf<String?>(null) }
+
+    // [T-minimal] SAF: pick a FOLDER, not a file. Memory is a corpus — the
+    // server writes several .md files and the app should not ask the user to
+    // pick them one at a time every time one changes.
+    val importLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.OpenDocumentTree(),
+    ) { uri ->
+        if (uri != null) {
+            importResult = com.openminis.minimal.data.MemoryImporter
+                .importTree(ctx, uri)
+                ?.let { "已导入 $it 个文件" }
+                ?: "导入失败"
+            memoryVersion++
+        }
+    }
 
     fun refresh() {
         sessions = store.list()
@@ -146,11 +183,19 @@ private fun MinimalRoot() {
     }
 
     if (showSettings) {
+        // memoryVersion is read here so the dialog recomposes after an import.
+        val memStats = remember(memoryVersion) {
+            com.openminis.minimal.data.MemoryStore.stats(ctx)
+        }
         SettingsDialog(
             model = settings.model,
             hasKey = settings.hasKey,
+            memoryFiles = memStats.first,
+            memoryChars = memStats.second,
+            importResult = importResult,
             onModelChange = { settings.model = it },
-            onDismiss = { showSettings = false },
+            onImportMemory = { importLauncher.launch(null) },
+            onDismiss = { showSettings = false; importResult = null },
         )
     }
 }
@@ -159,7 +204,11 @@ private fun MinimalRoot() {
 private fun SettingsDialog(
     model: String,
     hasKey: Boolean,
+    memoryFiles: Int,
+    memoryChars: Int,
+    importResult: String?,
     onModelChange: (String) -> Unit,
+    onImportMemory: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -214,6 +263,33 @@ private fun SettingsDialog(
                     fontSize = 12.sp,
                     color = InkMuted,
                 )
+
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.settings_memory),
+                    fontSize = 13.sp,
+                    color = InkMuted,
+                )
+                Text(
+                    if (memoryFiles == 0) stringResource(R.string.settings_memory_empty)
+                    else "$memoryFiles 个文件 · $memoryChars 字",
+                    fontSize = 15.sp,
+                    color = Ink,
+                )
+                Spacer(Modifier.height(6.dp))
+                TextButton(
+                    onClick = onImportMemory,
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(0.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.settings_memory_import),
+                        fontSize = 14.sp,
+                        color = com.openminis.minimal.ui.Terracotta,
+                    )
+                }
+                if (importResult != null) {
+                    Text(importResult, fontSize = 12.sp, color = InkMuted)
+                }
             }
         },
         confirmButton = {

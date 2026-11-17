@@ -81,6 +81,7 @@ class DeepSeekClient {
         apiKey: String,
         model: String,
         messages: List<Message>,
+        systemPrompt: String? = null,
         onDelta: (String) -> Unit,
     ): String = withContext(Dispatchers.IO) {
         cancelled.set(false)
@@ -89,6 +90,16 @@ class DeepSeekClient {
             put("model", model)
             put("stream", true)
             put("messages", buildJsonArray {
+                // The system message goes FIRST and is rebuilt per request rather
+                // than being a stored message: it is context, not conversation,
+                // and storing it would put it in every session file and show it
+                // in the transcript.
+                systemPrompt?.takeIf { it.isNotBlank() }?.let { prompt ->
+                    add(buildJsonObject {
+                        put("role", "system")
+                        put("content", prompt)
+                    })
+                }
                 messages.forEach { m ->
                     add(buildJsonObject {
                         put("role", m.role)

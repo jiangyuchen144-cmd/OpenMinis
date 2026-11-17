@@ -26,6 +26,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val settings = (app as MinimalApp).settings
     private val client = (app as MinimalApp).client
 
+    /**
+     * Read once per ViewModel, not once per message: the corpus is a handful of
+     * files and re-reading them for every turn would be disk work whose result
+     * cannot have changed mid-conversation. A memory import during a live
+     * session takes effect on the next one, which is the honest behaviour — the
+     * model should not silently change what it thinks it knows mid-answer.
+     */
+    private val systemPrompt: String? = com.openminis.minimal.data.MemoryStore
+        .systemPrompt(app)
+
     val messages = mutableStateListOf<Message>()
 
     var sessionId by mutableStateOf<String?>(null)
@@ -78,6 +88,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 val reply = client.stream(
                     apiKey = settings.apiKey,
                     model = settings.model,
+                    systemPrompt = systemPrompt,
                     messages = messages.filter { it.text.isNotBlank() && it.id != assistant.id },
                     onDelta = { delta ->
                         val i = messages.indexOfFirst { it.id == assistant.id }
